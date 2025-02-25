@@ -75,12 +75,17 @@ const PersistentHighlight = Extension.create({
         this.storage.highlights = [];
         return true;
       },
-    } as any;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+    } as Record<string, Function>;
   },
 
   addProseMirrorPlugins() {
     const highlightClass = this.options.highlightClass;
     const pluginKey = new PluginKey('persistentHighlight');
+    
+    // Storing a reference to 'this' is required here for ProseMirror plugins
+    // The plugin context will be different, so we need this reference to access the extension's storage
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const extension = this;
     
     return [
@@ -90,7 +95,9 @@ const PersistentHighlight = Extension.create({
           init() {
             return { highlights: [] as Highlight[] };
           },
-          apply(tr, value) {
+          // These parameters are required by the ProseMirror API but not used in our implementation
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          apply(_tr, _value) {
             return { highlights: extension.storage.highlights };
           }
         },
@@ -295,7 +302,7 @@ const Editor = () => {
         clearTimeout(popupTimeoutRef.current);
       }
     };
-  }, [editorInstance.current, showPopup]);
+  }, [showPopup]);
 
   // Function to add an action to history
   const addToActionHistory = (action: AIAction, instructions: string, modelName: GeminiModel) => {
@@ -416,12 +423,12 @@ const Editor = () => {
   }, [editor]);
 
   // Track manual text edits
-  const trackManualEdits = useCallback(
-    debounce((editor: TiptapEditor) => {
-      if (!editor || !textChangeTracker.current.isTracking) {
+  const trackManualEdits = useCallback((editor: TiptapEditor) => {
+    const debouncedTracking = debounce((editorInstance: TiptapEditor) => {
+      if (!editorInstance || !textChangeTracker.current.isTracking) {
         // Start tracking after initial content is loaded
-        if (!textChangeTracker.current.isTracking && editor) {
-          textChangeTracker.current.previousContent = editor.getText();
+        if (!textChangeTracker.current.isTracking && editorInstance) {
+          textChangeTracker.current.previousContent = editorInstance.getText();
           textChangeTracker.current.isTracking = true;
         }
         return;
@@ -430,11 +437,11 @@ const Editor = () => {
       // Skip tracking if this change was caused by an AI action
       if (textChangeTracker.current.ignoreNextChange) {
         // Just update the previous content without logging
-        textChangeTracker.current.previousContent = editor.getText();
+        textChangeTracker.current.previousContent = editorInstance.getText();
         return;
       }
       
-      const currentContent = editor.getText();
+      const currentContent = editorInstance.getText();
       const previousContent = textChangeTracker.current.previousContent;
       
       // Skip if content hasn't changed
@@ -448,11 +455,10 @@ const Editor = () => {
         // Only log significant additions (more than just a few characters)
         if (addedChars > 3) {
           // For manual edits, we need to handle differently since these aren't AIActions
-          // We'll pass the string "manual_add" which the server-side will format correctly
           logEditHistory(
             previousContent, 
             currentContent, 
-            'manual_add' as any, 
+            'manual_add', 
             `Added approx. ${addedChars} characters`
           );
         }
@@ -466,7 +472,7 @@ const Editor = () => {
           logEditHistory(
             previousContent, 
             currentContent, 
-            'manual_delete' as any, 
+            'manual_delete', 
             `Removed approx. ${removedChars} characters`
           );
         }
@@ -474,9 +480,10 @@ const Editor = () => {
       
       // Update previous content reference
       textChangeTracker.current.previousContent = currentContent;
-    }, 1000), // 1 second debounce to avoid logging every keystroke
-    []
-  );
+    }, 1000); // 1 second debounce to avoid logging every keystroke
+    
+    debouncedTracking(editor);
+  }, []); // Empty dependency array as we're only using refs inside the callback
 
   // Save model preference when it changes
   useEffect(() => {
