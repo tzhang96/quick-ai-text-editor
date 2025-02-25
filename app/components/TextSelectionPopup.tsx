@@ -52,19 +52,33 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     const popup = popupRef.current;
     if (!popup) return;
 
+    console.log('Positioning popup with position:', position);
+
     // Start with the initial position
     let finalX = position.x;
     let finalY = position.y;
 
     // Get popup dimensions
     const rect = popup.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
     
     // Check selection element position in editor
     const selection = window.getSelection();
     const editorElement = document.querySelector('.ProseMirror');
     const editorRect = editorElement?.getBoundingClientRect();
+    
+    console.log('Popup dimensions:', {
+      width: rect.width,
+      height: rect.height,
+      viewport: { width: viewportWidth, height: viewportHeight },
+      editor: editorRect ? { 
+        top: editorRect.top, 
+        bottom: editorRect.bottom,
+        left: editorRect.left,
+        right: editorRect.right
+      } : 'Not found'
+    });
     
     if (selection && selection.rangeCount > 0 && editorRect) {
       const range = selection.getRangeAt(0);
@@ -95,6 +109,12 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
           finalX = selectionRect.left - rect.width - 20;
         }
       }
+    } else {
+      // Fallback positioning if no selection or editor element found
+      // Position relative to viewport center
+      console.log('Using fallback positioning');
+      finalX = Math.max(10, Math.min(finalX, viewportWidth - rect.width - 10));
+      finalY = Math.max(10, Math.min(finalY, viewportHeight - rect.height - 10));
     }
 
     // Final boundary checks to ensure popup stays within viewport
@@ -113,6 +133,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
 
     // Apply position
     popup.style.transform = `translate(${finalX}px, ${finalY}px)`;
+    console.log('Final popup position:', { x: finalX, y: finalY });
   }, [position]);
 
   const handleAIAction = async (action: AIAction) => {
