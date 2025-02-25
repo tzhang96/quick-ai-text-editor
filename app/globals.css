@@ -32,11 +32,13 @@ body {
   padding: 1rem;
   outline: none;
   width: 100%;
+  color: #171717;
 }
 
 .ProseMirror p {
   margin: 0.75em 0;
   line-height: 1.5;
+  color: #171717;
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {
@@ -70,6 +72,19 @@ body {
 .ProseMirror ul,
 .ProseMirror ol {
   padding: 0 1rem;
+  margin-left: 1rem;
+}
+
+.ProseMirror ul {
+  list-style-type: disc;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+}
+
+.ProseMirror li {
+  margin-bottom: 0.5em;
 }
 
 .ProseMirror h1,

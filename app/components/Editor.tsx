@@ -425,7 +425,16 @@ const Editor = () => {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        bulletList: {
+          keepMarks: true,
+          keepAttributes: true, // Keep attributes when toggling lists
+        },
+        orderedList: {
+          keepMarks: true,
+          keepAttributes: true, // Keep attributes when toggling lists
+        },
+      }),
       Underline,
       Highlight,
       TextStyle,
