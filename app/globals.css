@@ -141,19 +141,12 @@ body {
 /* Animation for text selection popup */
 .text-selection-popup {
   transition: opacity 100ms ease;
-  pointer-events: auto;
-  user-select: none;
-  z-index: 9999;
-  will-change: transform, opacity;
+  position: fixed !important;
+  z-index: 9999 !important;
+  opacity: 1 !important;
 }
 
-/* Add specific styles for the popup container */
-.text-selection-popup > div {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  backdrop-filter: blur(2px);
-}
-
-/* Style the buttons to be more visible */
-.text-selection-popup button {
-  font-weight: 500;
+/* Force visibility in production */
+body .text-selection-popup[style*="opacity"] {
+  opacity: 1 !important;
 }

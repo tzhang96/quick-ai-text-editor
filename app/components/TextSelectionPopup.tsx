@@ -52,7 +52,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     const popup = popupRef.current;
     if (!popup) return;
 
-    console.log('Positioning popup with position:', position);
+    console.log('Positioning popup with initial coordinates:', position);
 
     // Start with the initial position
     let finalX = position.x;
@@ -60,29 +60,39 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
 
     // Get popup dimensions
     const rect = popup.getBoundingClientRect();
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    console.log('Popup dimensions:', { 
+      width: rect.width,
+      height: rect.height,
+      viewportWidth,
+      viewportHeight
+    });
     
     // Check selection element position in editor
     const selection = window.getSelection();
     const editorElement = document.querySelector('.ProseMirror');
     const editorRect = editorElement?.getBoundingClientRect();
     
-    console.log('Popup dimensions:', {
-      width: rect.width,
-      height: rect.height,
-      viewport: { width: viewportWidth, height: viewportHeight },
-      editor: editorRect ? { 
-        top: editorRect.top, 
+    console.log('Editor element:', { 
+      found: !!editorElement,
+      rect: editorRect ? {
+        top: editorRect.top,
         bottom: editorRect.bottom,
-        left: editorRect.left,
-        right: editorRect.right
-      } : 'Not found'
+        height: editorRect.height
+      } : null
     });
     
     if (selection && selection.rangeCount > 0 && editorRect) {
       const range = selection.getRangeAt(0);
       const selectionRect = range.getBoundingClientRect();
+      
+      console.log('Selection rect:', {
+        top: selectionRect.top,
+        bottom: selectionRect.bottom,
+        height: selectionRect.height
+      });
       
       // Determine if we have more space above or below the selection
       const spaceAbove = selectionRect.top - editorRect.top;
@@ -109,12 +119,6 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
           finalX = selectionRect.left - rect.width - 20;
         }
       }
-    } else {
-      // Fallback positioning if no selection or editor element found
-      // Position relative to viewport center
-      console.log('Using fallback positioning');
-      finalX = Math.max(10, Math.min(finalX, viewportWidth - rect.width - 10));
-      finalY = Math.max(10, Math.min(finalY, viewportHeight - rect.height - 10));
     }
 
     // Final boundary checks to ensure popup stays within viewport
@@ -133,7 +137,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
 
     // Apply position
     popup.style.transform = `translate(${finalX}px, ${finalY}px)`;
-    console.log('Final popup position:', { x: finalX, y: finalY });
+    console.log('Final popup position:', { finalX, finalY });
   }, [position]);
 
   const handleAIAction = async (action: AIAction) => {
@@ -258,7 +262,9 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       style={{ 
         transform: `translate(${position.x}px, ${position.y}px)`,
         transformOrigin: 'top center',
-        transition: 'opacity 150ms ease, transform 150ms ease'
+        transition: 'opacity 150ms ease, transform 150ms ease',
+        opacity: isVisible ? '1 !important' : '0 !important',
+        pointerEvents: isVisible ? 'auto' : 'none'
       }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}

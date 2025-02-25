@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor as TiptapEditor } from '@tiptap/react';
 import { Extension } from '@tiptap/core';
@@ -216,6 +215,12 @@ const Editor = () => {
       // Get the current selection
       const selection = window.getSelection();
       
+      console.log('Selection event triggered:', { 
+        hasSelection: !!selection, 
+        text: selection?.toString().trim(),
+        anchorNodeInEditor: selection?.anchorNode ? editor.view.dom.contains(selection.anchorNode) : false
+      });
+      
       // Check if selection exists, has content, and is within the editor
       if (selection && 
           selection.toString().trim().length > 0 && 
@@ -224,30 +229,28 @@ const Editor = () => {
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
         
+        console.log('Valid selection found, coordinates:', { 
+          left: rect.left,
+          bottom: rect.bottom, 
+          scrollX: window.scrollX, 
+          scrollY: window.scrollY,
+          finalX: rect.left + window.scrollX,
+          finalY: rect.bottom + window.scrollY
+        });
+        
         // Store the current selection text and position
         setSelectedText(selection.toString());
         
-        // Calculate position with window scroll offset for cross-browser compatibility
-        // This is especially important for production environments
-        const scrollX = window.scrollX || window.pageXOffset || document.documentElement.scrollLeft;
-        const scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
+        // In production, we may need to calculate coordinates differently
+        // Use clientX/Y for better cross-browser compatibility
+        const windowScroll = {
+          scrollX: window.pageXOffset || document.documentElement.scrollLeft,
+          scrollY: window.pageYOffset || document.documentElement.scrollTop
+        };
         
         setSelectionCoords({
-          x: rect.left + scrollX,
-          y: rect.bottom + scrollY
-        });
-        
-        console.log('Selection detected:', {
-          text: selection.toString().substring(0, 20) + '...',
-          position: { x: rect.left + scrollX, y: rect.bottom + scrollY },
-          rect: { 
-            left: rect.left, 
-            right: rect.right, 
-            top: rect.top, 
-            bottom: rect.bottom,
-            width: rect.width,
-            height: rect.height
-          }
+          x: rect.left + windowScroll.scrollX,
+          y: rect.bottom + windowScroll.scrollY
         });
         
         // Show popup with almost no delay now (50ms)
@@ -256,7 +259,7 @@ const Editor = () => {
         }
         popupTimeoutRef.current = setTimeout(() => {
           setShowPopup(true);
-          console.log('Popup visibility set to true');
+          console.log('Setting showPopup to true');
         }, 50);
       } else {
         // Hide popup if selection doesn't exist or is empty
@@ -264,6 +267,7 @@ const Editor = () => {
           clearTimeout(popupTimeoutRef.current);
         }
         setShowPopup(false);
+        console.log('Selection not valid, hiding popup');
       }
     };
 
@@ -539,6 +543,14 @@ const Editor = () => {
   //   }
   // };
 
+  // Add a utility function to help with popup display issues
+  const ensurePopupVisibility = () => {
+    if (selectedText && selectionCoords && !showPopup) {
+      console.log("Force showing popup with current selection");
+      setShowPopup(true);
+    }
+  };
+
   if (!editor) {
     return <div>Loading editor...</div>;
   }
@@ -645,50 +657,6 @@ const Editor = () => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
           </button>
-          
-          {/* Debug button only in development mode */}
-          {process.env.NODE_ENV === 'development' && (
-            <button 
-              onClick={() => {
-                const selection = editor.state.selection;
-                const { from, to } = selection;
-                const text = editor.state.doc.textBetween(from, to, ' ');
-                
-                // Manual selection for testing
-                if (from !== to) {
-                  // If there's a selection, use it
-                  setSelectedText(text);
-                  const rect = editor.view.coordsAtPos(from);
-                  setSelectionCoords({
-                    x: rect.left,
-                    y: rect.bottom
-                  });
-                  setShowPopup(true);
-                  console.log('Debug: Manual trigger with selection', { from, to, text, rect });
-                } else {
-                  // If no selection, create a test selection
-                  const testFrom = 5;
-                  const testTo = 15;
-                  const testText = editor.state.doc.textBetween(testFrom, testTo, ' ');
-                  editor.commands.setTextSelection({ from: testFrom, to: testTo });
-                  
-                  // Get coordinates for this test selection
-                  const testRect = editor.view.coordsAtPos(testFrom);
-                  setSelectedText(testText);
-                  setSelectionCoords({
-                    x: testRect.left,
-                    y: testRect.bottom
-                  });
-                  setShowPopup(true);
-                  console.log('Debug: Manual trigger with test selection', { testFrom, testTo, testText, testRect });
-                }
-              }}
-              className="px-3 py-1 bg-red-100 border border-red-200 text-red-700 rounded-md hover:bg-red-200 flex items-center text-sm shadow-sm"
-              title="Debug tool: Force popup to appear"
-            >
-              Debug Popup
-            </button>
-          )}
         </div>
       </div>
       
@@ -714,21 +682,37 @@ const Editor = () => {
         </div>
       </div>
       
-      {/* Render the popup using a portal to ensure it's at the root level of the DOM */}
-      {selectedText && selectionCoords && showPopup && typeof window !== 'undefined' && 
-        createPortal(
-          <TextSelectionPopup 
-            text={selectedText} 
-            position={selectionCoords} 
-            editor={editor}
-            className="text-selection-popup"
-            onActionPerformed={addToActionHistory}
-            actionHistory={actionHistory}
-            modelName={activeModel}
-          />,
-          document.body
-        )
-      }
+      {/* Debug popup state and controls */}
+      <div className="fixed bottom-0 left-0 bg-gray-800 text-white p-2 text-xs z-50 max-w-md overflow-auto">
+        <div>
+          Popup debug: 
+          {JSON.stringify({
+            selectedText: selectedText ? selectedText.substring(0, 20) + '...' : null,
+            coords: selectionCoords,
+            showPopup
+          })}
+        </div>
+        {selectedText && !showPopup && (
+          <button 
+            className="mt-2 bg-blue-500 text-white px-2 py-1 rounded text-xs"
+            onClick={ensurePopupVisibility}
+          >
+            Force Show Popup
+          </button>
+        )}
+      </div>
+      
+      {selectedText && selectionCoords && showPopup && (
+        <TextSelectionPopup 
+          text={selectedText} 
+          position={selectionCoords} 
+          editor={editor}
+          className="text-selection-popup"
+          onActionPerformed={addToActionHistory}
+          actionHistory={actionHistory}
+          modelName={activeModel}
+        />
+      )}
       
       {isHistoryOpen && <EditHistoryViewer onClose={() => setIsHistoryOpen(false)} />}
     </div>
