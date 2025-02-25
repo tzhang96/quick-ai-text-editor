@@ -690,6 +690,7 @@ const Editor = () => {
       // Ctrl+Shift+P to force popup
       if (e.ctrlKey && e.shiftKey && e.key === 'p') {
         e.preventDefault();
+        console.log('Keyboard shortcut Ctrl+Shift+P detected - forcing popup');
         forceShowPopupForCurrentSelection();
       }
     };
@@ -834,20 +835,6 @@ const Editor = () => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
           </button>
-
-          {/* Show AI Options button that appears when text is selected but popup isn't visible */}
-          {selectedText && !showPopup && (
-            <button 
-              onClick={forceShowPopupForCurrentSelection}
-              className="px-3 py-1 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 flex items-center text-sm shadow-sm"
-              title="Ctrl+Shift+P"
-            >
-              <span className="mr-1">Show AI Options</span>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
-              </svg>
-            </button>
-          )}
         </div>
       </div>
       
@@ -869,7 +856,7 @@ const Editor = () => {
           </span>
         </div>
         <div>
-          Select text to see AI options
+          Select text to see AI options • <span className="text-gray-600 font-medium">Ctrl+Shift+P</span> to force popup
         </div>
       </div>
       
