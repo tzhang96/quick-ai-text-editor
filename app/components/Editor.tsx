@@ -873,17 +873,17 @@ const Editor = () => {
         </div>
       </div>
       
-      {selectedText && selectionCoords && showPopup && (
-        <TextSelectionPopup 
-          text={selectedText} 
-          position={selectionCoords} 
-          editor={editor}
-          className="text-selection-popup"
-          onActionPerformed={addToActionHistory}
-          actionHistory={actionHistory}
-          modelName={activeModel}
-        />
-      )}
+      {/* Always render the popup but control its visibility with props */}
+      <TextSelectionPopup 
+        text={selectedText || ''} 
+        position={selectionCoords || { x: 0, y: 0 }} 
+        editor={editor}
+        className="text-selection-popup"
+        onActionPerformed={addToActionHistory}
+        actionHistory={actionHistory}
+        modelName={activeModel}
+        isVisible={showPopup && !!selectedText && !!selectionCoords}
+      />
       
       {isHistoryOpen && <EditHistoryViewer onClose={() => setIsHistoryOpen(false)} />}
     </div>

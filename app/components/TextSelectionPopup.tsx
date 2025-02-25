@@ -20,6 +20,7 @@ type TextSelectionPopupProps = {
   actionHistory?: ActionHistoryItem[];
   onActionPerformed?: (action: AIAction, instructions: string, modelName: GeminiModel) => void;
   modelName?: GeminiModel;
+  isVisible?: boolean;
 };
 
 const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
@@ -30,10 +31,10 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
   actionHistory = [],
   onActionPerformed,
   modelName = DEFAULT_MODEL,
+  isVisible = false,
 }) => {
   const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -44,24 +45,15 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       textLength: text?.length || 0,
       position,
       editorExists: !!editor,
-      modelName
+      modelName,
+      isVisible
     });
-  }, [text, position, editor, modelName]);
-
-  // Make popup appear immediately
-  useEffect(() => {
-    // Set visible immediately
-    setIsVisible(true);
-    
-    return () => {
-      // No cleanup needed
-    };
-  }, []);
+  }, [text, position, editor, modelName, isVisible]);
 
   // Position the popup and ensure it's within viewport
   useEffect(() => {
     const popup = popupRef.current;
-    if (!popup) return;
+    if (!popup || !isVisible) return;
 
     console.log('Positioning popup, raw position:', position);
 
@@ -175,7 +167,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       // Apply emergency fallback position
       popup.style.transform = 'translate(10px, 10px)';
     }
-  }, [position]);
+  }, [position, isVisible]);
 
   const handleAIAction = async (action: AIAction) => {
     setIsLoading(true);
@@ -253,13 +245,9 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       setShowHistory(false);
       // Close popup after action completes
       setTimeout(() => {
-        setIsVisible(false);
-        setTimeout(() => {
-          // Allow animation to complete before unmounting
-          if (onActionPerformed) {
-            onActionPerformed('' as AIAction, '', modelName); // Signal to close popup
-          }
-        }, 200);
+        if (onActionPerformed) {
+          onActionPerformed('' as AIAction, '', modelName); // Signal to close popup
+        }
       }, 500);
     }
   };
@@ -300,7 +288,8 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
         transform: `translate(${position.x}px, ${position.y}px)`,
         transformOrigin: 'top center',
         transition: 'opacity 50ms ease', // Only fade opacity, no movement animation
-        pointerEvents: 'none' // Prevent mouse events on the container to fix flickering
+        pointerEvents: isVisible ? 'auto' : 'none', // Only enable pointer events when visible
+        visibility: isVisible ? 'visible' : 'hidden' // Hide completely when not visible
       }}
     >
       <div 
