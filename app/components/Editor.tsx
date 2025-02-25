@@ -215,10 +215,12 @@ const Editor = () => {
       // Get the current selection
       const selection = window.getSelection();
       
-      console.log('Selection event triggered:', { 
+      // Add debug logging for production troubleshooting
+      console.log('Selection debug:', { 
         hasSelection: !!selection, 
-        text: selection?.toString().trim(),
-        anchorNodeInEditor: selection?.anchorNode ? editor.view.dom.contains(selection.anchorNode) : false
+        selectionText: selection?.toString().trim() || '',
+        editorElement: !!editor.view.dom,
+        inEditor: selection?.anchorNode ? editor.view.dom.contains(selection.anchorNode) : false
       });
       
       // Check if selection exists, has content, and is within the editor
@@ -226,49 +228,48 @@ const Editor = () => {
           selection.toString().trim().length > 0 && 
           editor.view.dom.contains(selection.anchorNode)) {
         
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        
-        console.log('Valid selection found, coordinates:', { 
-          left: rect.left,
-          bottom: rect.bottom, 
-          scrollX: window.scrollX, 
-          scrollY: window.scrollY,
-          finalX: rect.left + window.scrollX,
-          finalY: rect.bottom + window.scrollY
-        });
-        
-        // Store the current selection text and position
-        setSelectedText(selection.toString());
-        
-        // In production, we may need to calculate coordinates differently
-        // Use clientX/Y for better cross-browser compatibility
-        const windowScroll = {
-          scrollX: window.pageXOffset || document.documentElement.scrollLeft,
-          scrollY: window.pageYOffset || document.documentElement.scrollTop
-        };
-        
-        setSelectionCoords({
-          x: rect.left + windowScroll.scrollX,
-          y: rect.bottom + windowScroll.scrollY
-        });
-        
-        // Show popup with almost no delay now (50ms)
-        if (popupTimeoutRef.current) {
-          clearTimeout(popupTimeoutRef.current);
+        try {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          
+          // Verify we got valid coordinates
+          if (rect && rect.width > 0 && rect.height > 0) {
+            // Store the current selection text and position
+            const selText = selection.toString();
+            setSelectedText(selText);
+            
+            const coords = {
+              x: rect.left + window.scrollX,
+              y: rect.bottom + window.scrollY
+            };
+            
+            console.log('Valid selection detected:', { selText, coords });
+            setSelectionCoords(coords);
+            
+            // Show popup with almost no delay now (50ms)
+            if (popupTimeoutRef.current) {
+              clearTimeout(popupTimeoutRef.current);
+            }
+            popupTimeoutRef.current = setTimeout(() => {
+              setShowPopup(true);
+              console.log('Popup state updated:', { showPopup: true });
+            }, 50);
+            return; // Exit early on successful processing
+          } else {
+            console.warn('Invalid selection rectangle:', rect);
+          }
+        } catch (error) {
+          console.error('Error processing selection:', error);
         }
-        popupTimeoutRef.current = setTimeout(() => {
-          setShowPopup(true);
-          console.log('Setting showPopup to true');
-        }, 50);
-      } else {
-        // Hide popup if selection doesn't exist or is empty
-        if (popupTimeoutRef.current) {
-          clearTimeout(popupTimeoutRef.current);
-        }
-        setShowPopup(false);
-        console.log('Selection not valid, hiding popup');
       }
+      
+      // If we reach here, either the selection is invalid or an error occurred
+      // Hide popup if selection doesn't exist or is empty
+      if (popupTimeoutRef.current) {
+        clearTimeout(popupTimeoutRef.current);
+      }
+      setShowPopup(false);
+      console.log('No valid selection, hiding popup');
     };
 
     // Handle mouse events
@@ -277,12 +278,13 @@ const Editor = () => {
       if (e.target instanceof Node) {
         const popupElement = document.querySelector('.text-selection-popup');
         if (popupElement && popupElement.contains(e.target)) {
+          console.log('Click inside popup, ignoring');
           return;
         }
       }
       
       // Wait a moment for the selection to be updated
-      setTimeout(handleSelection, 10);
+      setTimeout(handleSelection, 50); // Increased from 10ms to 50ms for better reliability
     };
     
     const handleMouseDown = (e: MouseEvent) => {
@@ -543,13 +545,64 @@ const Editor = () => {
   //   }
   // };
 
-  // Add a utility function to help with popup display issues
-  const ensurePopupVisibility = () => {
-    if (selectedText && selectionCoords && !showPopup) {
-      console.log("Force showing popup with current selection");
-      setShowPopup(true);
+  // Add a forced method to show the popup
+  const forceShowPopupForCurrentSelection = useCallback(() => {
+    console.log('Forcing popup display for current selection');
+    const editor = editorInstance.current;
+    if (!editor) {
+      console.error('Cannot force popup - editor not available');
+      return;
     }
-  };
+    
+    // Use the editor's selection to set state
+    const { from, to } = editor.state.selection;
+    
+    // Only show if there's an actual selection
+    if (from !== to) {
+      const selectedText = editor.state.doc.textBetween(from, to, ' ');
+      setSelectedText(selectedText);
+      
+      // Set coordinates based on editor position
+      const editorElement = editor.view.dom;
+      const editorRect = editorElement.getBoundingClientRect();
+      
+      // Position near the top of the editor as a fallback
+      const coords = {
+        x: editorRect.left + 50,
+        y: editorRect.top + 50
+      };
+      
+      console.log('Setting forced popup position:', coords);
+      setSelectionCoords(coords);
+      
+      // Set selection range for persistent highlighting
+      setSelectionRange({ from, to });
+      
+      // Apply persistent highlight
+      setPersistentHighlight(editor, { from, to });
+      
+      // Show the popup immediately
+      setShowPopup(true);
+    } else {
+      console.warn('Cannot force popup - no text selected in editor');
+    }
+  }, []);
+
+  // Add keyboard shortcut for testing
+  useEffect(() => {
+    const handleKeyboardShortcut = (e: KeyboardEvent) => {
+      // Ctrl+Shift+P to force popup
+      if (e.ctrlKey && e.shiftKey && e.key === 'p') {
+        e.preventDefault();
+        forceShowPopupForCurrentSelection();
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyboardShortcut);
+    return () => {
+      document.removeEventListener('keydown', handleKeyboardShortcut);
+    };
+  }, [forceShowPopupForCurrentSelection]);
 
   if (!editor) {
     return <div>Loading editor...</div>;
@@ -657,6 +710,20 @@ const Editor = () => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
           </button>
+
+          {/* Show AI Options button that appears when text is selected but popup isn't visible */}
+          {selectedText && !showPopup && (
+            <button 
+              onClick={forceShowPopupForCurrentSelection}
+              className="px-3 py-1 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 flex items-center text-sm shadow-sm"
+              title="Ctrl+Shift+P"
+            >
+              <span className="mr-1">Show AI Options</span>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
       
@@ -680,26 +747,6 @@ const Editor = () => {
         <div>
           Select text to see AI options
         </div>
-      </div>
-      
-      {/* Debug popup state and controls */}
-      <div className="fixed bottom-0 left-0 bg-gray-800 text-white p-2 text-xs z-50 max-w-md overflow-auto">
-        <div>
-          Popup debug: 
-          {JSON.stringify({
-            selectedText: selectedText ? selectedText.substring(0, 20) + '...' : null,
-            coords: selectionCoords,
-            showPopup
-          })}
-        </div>
-        {selectedText && !showPopup && (
-          <button 
-            className="mt-2 bg-blue-500 text-white px-2 py-1 rounded text-xs"
-            onClick={ensurePopupVisibility}
-          >
-            Force Show Popup
-          </button>
-        )}
       </div>
       
       {selectedText && selectionCoords && showPopup && (

@@ -37,6 +37,17 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
 
+  // Log props for debugging in production
+  useEffect(() => {
+    console.log('TextSelectionPopup props:', {
+      hasText: !!text,
+      textLength: text?.length || 0,
+      position,
+      editorExists: !!editor,
+      modelName
+    });
+  }, [text, position, editor, modelName]);
+
   // Make popup appear with animation - much faster now
   useEffect(() => {
     // Almost immediate appearance
@@ -52,92 +63,118 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     const popup = popupRef.current;
     if (!popup) return;
 
-    console.log('Positioning popup with initial coordinates:', position);
+    console.log('Positioning popup, raw position:', position);
 
-    // Start with the initial position
-    let finalX = position.x;
-    let finalY = position.y;
+    try {
+      // Start with the initial position
+      let finalX = position.x || 0; // Fallback to 0 if undefined
+      let finalY = position.y || 0; // Fallback to 0 if undefined
 
-    // Get popup dimensions
-    const rect = popup.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    
-    console.log('Popup dimensions:', { 
-      width: rect.width,
-      height: rect.height,
-      viewportWidth,
-      viewportHeight
-    });
-    
-    // Check selection element position in editor
-    const selection = window.getSelection();
-    const editorElement = document.querySelector('.ProseMirror');
-    const editorRect = editorElement?.getBoundingClientRect();
-    
-    console.log('Editor element:', { 
-      found: !!editorElement,
-      rect: editorRect ? {
-        top: editorRect.top,
-        bottom: editorRect.bottom,
-        height: editorRect.height
-      } : null
-    });
-    
-    if (selection && selection.rangeCount > 0 && editorRect) {
-      const range = selection.getRangeAt(0);
-      const selectionRect = range.getBoundingClientRect();
+      // Get popup dimensions
+      const rect = popup.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
       
-      console.log('Selection rect:', {
-        top: selectionRect.top,
-        bottom: selectionRect.bottom,
-        height: selectionRect.height
-      });
-      
-      // Determine if we have more space above or below the selection
-      const spaceAbove = selectionRect.top - editorRect.top;
-      const spaceBelow = editorRect.bottom - selectionRect.bottom;
-      
-      // Position based on available space
-      if (spaceBelow >= rect.height + 20) {
-        // Default: Position below selection with enough space
-        finalY = selectionRect.bottom + 10;
-      } else if (spaceAbove >= rect.height + 20) {
-        // Position above selection if more space available
-        finalY = selectionRect.top - rect.height - 10;
-      } else {
-        // Position to the side if neither above nor below has enough space
-        finalY = Math.min(
-          Math.max(editorRect.top + 10, selectionRect.top), 
-          editorRect.bottom - rect.height - 10
-        );
-        
-        // Prefer right side positioning if possible
-        if (selectionRect.right + rect.width + 20 < viewportWidth) {
-          finalX = selectionRect.right + 20;
-        } else if (selectionRect.left - rect.width - 20 > 0) {
-          finalX = selectionRect.left - rect.width - 20;
+      // Fallback positioning if we don't have valid coordinates
+      if (!position.x && !position.y) {
+        console.warn('Invalid position coordinates, using fallback positioning');
+        // Try to position near the editor
+        const editorElement = document.querySelector('.ProseMirror');
+        if (editorElement) {
+          const editorRect = editorElement.getBoundingClientRect();
+          finalX = editorRect.left + 50;
+          finalY = editorRect.top + 50;
+        } else {
+          // Centered fallback if editor not found
+          finalX = viewportWidth / 2 - rect.width / 2;
+          finalY = viewportHeight / 3; // Position in top third
         }
       }
-    }
+      
+      // Check selection element position in editor
+      const selection = window.getSelection();
+      const editorElement = document.querySelector('.ProseMirror');
+      const editorRect = editorElement?.getBoundingClientRect();
+      
+      if (selection && selection.rangeCount > 0 && editorRect) {
+        try {
+          const range = selection.getRangeAt(0);
+          const selectionRect = range.getBoundingClientRect();
+          
+          console.log('Selection rect:', {
+            top: selectionRect.top,
+            bottom: selectionRect.bottom,
+            left: selectionRect.left,
+            right: selectionRect.right,
+            width: selectionRect.width,
+            height: selectionRect.height
+          });
+          
+          // Only use selection rect if it seems valid
+          if (selectionRect.width > 0 && selectionRect.height > 0) {
+            // Determine if we have more space above or below the selection
+            const spaceAbove = selectionRect.top - editorRect.top;
+            const spaceBelow = editorRect.bottom - selectionRect.bottom;
+            
+            // Position based on available space
+            if (spaceBelow >= rect.height + 20) {
+              // Default: Position below selection with enough space
+              finalY = selectionRect.bottom + 10;
+              finalX = selectionRect.left + (selectionRect.width / 2) - (rect.width / 2);
+            } else if (spaceAbove >= rect.height + 20) {
+              // Position above selection if more space available
+              finalY = selectionRect.top - rect.height - 10;
+              finalX = selectionRect.left + (selectionRect.width / 2) - (rect.width / 2);
+            } else {
+              // Position to the side if neither above nor below has enough space
+              finalY = Math.min(
+                Math.max(editorRect.top + 10, selectionRect.top), 
+                editorRect.bottom - rect.height - 10
+              );
+              
+              // Prefer right side positioning if possible
+              if (selectionRect.right + rect.width + 20 < viewportWidth) {
+                finalX = selectionRect.right + 20;
+              } else if (selectionRect.left - rect.width - 20 > 0) {
+                finalX = selectionRect.left - rect.width - 20;
+              } else {
+                // Center horizontally if side positioning doesn't work
+                finalX = viewportWidth / 2 - rect.width / 2;
+              }
+            }
+          } else {
+            console.warn('Invalid selection rectangle, using original position');
+          }
+        } catch (error) {
+          console.error('Error calculating position from selection:', error);
+        }
+      } else {
+        console.log('Unable to find selection or editor element, using default position');
+      }
 
-    // Final boundary checks to ensure popup stays within viewport
-    if (finalX + rect.width > viewportWidth) {
-      finalX = viewportWidth - rect.width - 10;
-    }
-    if (finalX < 10) {
-      finalX = 10;
-    }
-    if (finalY + rect.height > viewportHeight) {
-      finalY = viewportHeight - rect.height - 10;
-    }
-    if (finalY < 10) {
-      finalY = 10;
-    }
+      // Final boundary checks to ensure popup stays within viewport
+      if (finalX + rect.width > viewportWidth) {
+        finalX = viewportWidth - rect.width - 10;
+      }
+      if (finalX < 10) {
+        finalX = 10;
+      }
+      if (finalY + rect.height > viewportHeight) {
+        finalY = viewportHeight - rect.height - 10;
+      }
+      if (finalY < 10) {
+        finalY = 10;
+      }
 
-    // Apply position
-    popup.style.transform = `translate(${finalX}px, ${finalY}px)`;
-    console.log('Final popup position:', { finalX, finalY });
+      // Apply position with added z-index to ensure it's on top
+      console.log('Final popup position:', { finalX, finalY });
+      popup.style.transform = `translate(${finalX}px, ${finalY}px)`;
+      popup.style.zIndex = '9999'; // Ensure high z-index
+    } catch (error) {
+      console.error('Error positioning popup:', error);
+      // Apply emergency fallback position
+      popup.style.transform = 'translate(10px, 10px)';
+    }
   }, [position]);
 
   const handleAIAction = async (action: AIAction) => {
@@ -262,9 +299,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       style={{ 
         transform: `translate(${position.x}px, ${position.y}px)`,
         transformOrigin: 'top center',
-        transition: 'opacity 150ms ease, transform 150ms ease',
-        opacity: isVisible ? '1 !important' : '0 !important',
-        pointerEvents: isVisible ? 'auto' : 'none'
+        transition: 'opacity 150ms ease, transform 150ms ease'
       }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}

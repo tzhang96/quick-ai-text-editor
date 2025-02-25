@@ -141,12 +141,4 @@ body {
 /* Animation for text selection popup */
 .text-selection-popup {
   transition: opacity 100ms ease;
-  position: fixed !important;
-  z-index: 9999 !important;
-  opacity: 1 !important;
-}
-
-/* Force visibility in production */
-body .text-selection-popup[style*="opacity"] {
-  opacity: 1 !important;
 }
