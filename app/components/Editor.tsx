@@ -142,7 +142,6 @@ const Editor = () => {
     ignoreNextChange: false
   });
   const isSelecting = useRef<boolean>(false);
-  const lastSelectionChangeTime = useRef<number>(0);
   const selectionEndTimeout = useRef<NodeJS.Timeout | null>(null);
   const isDragging = useRef<boolean>(false);
 
@@ -232,307 +231,60 @@ const Editor = () => {
   };
 
   // Add a debounced function to show the popup
-  const debouncedShowPopup = useCallback(
-    debounce((shouldShow: boolean) => {
+  const debouncedShowPopup = useCallback((shouldShow: boolean) => {
+    // Create a debounced function inline
+    const showPopupWithDelay = () => {
       if (shouldShow && !isSelecting.current && !isDragging.current) {
         console.log('Debounced popup show triggered');
         setShowPopup(true);
       }
-    }, 50),
-    []
-  );
+    };
+    
+    // Add a small delay to ensure selection is stable
+    setTimeout(showPopupWithDelay, 200);
+  }, [isSelecting, isDragging]);
 
-  // This effect handles the selection and showing the popup
+  // Effect to handle selection changes
   useEffect(() => {
-    const editor = editorInstance.current;
-    if (!editor) return;
-    
-    const handleSelection = () => {
-      // Don't show popup if we're still in the process of selecting text
-      if (isSelecting.current) {
-        console.log('User is actively selecting text, not showing popup yet');
-        return;
-      }
-      
-      // Check if selection exists, has content, and is within the editor
-      const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0) return;
-      
-      const range = selection.getRangeAt(0);
-      if (range.collapsed) {
-        // No text selected, hide popup
-        setShowPopup(false);
-        return;
-      }
-      
-      // Check if selection is within the editor
-      if (!editor.view.dom.contains(selection.anchorNode)) {
-        setShowPopup(false);
-        return;
-      }
-      
-      // Get selected text
-      const selectedText = selection.toString().trim();
-      if (!selectedText) {
-        setShowPopup(false);
-        return;
-      }
-      
-      try {
-        // Get selection rectangle
-        const rect = range.getBoundingClientRect();
-        
-        // Set popup position and content
-        setSelectedText(selectedText);
-        setSelectionCoords({
-          x: rect.left + window.scrollX,
-          y: rect.bottom + window.scrollY
-        });
-        
-        // Store selection range for highlighting
-        const { from, to } = editor.state.selection;
-        setSelectionRange({ from, to });
-        
-        // Apply persistent highlight
-        setPersistentHighlight(editor, { from, to });
-        
-        // Show popup using debounce to ensure selection is stable
-        console.log('Selection complete, scheduling popup for text:', selectedText.substring(0, 30) + (selectedText.length > 30 ? '...' : ''));
-        debouncedShowPopup(true);
-      } catch (error) {
-        console.error('Error processing selection:', error);
-        setShowPopup(false);
-      }
-    };
-
-    // Handle when mouse is released after dragging
-    const handleDragEnd = (e: MouseEvent) => {
-      if (!isDragging.current) return;
-      
-      console.log('Drag ended, checking selection');
-      isDragging.current = false;
-      isSelecting.current = false;
-      
-      // Update the last mouse up time
-      lastMouseUpTime.current = Date.now();
-      
-      // Get the current selection
-      const selection = window.getSelection();
-      
-      // If there's no valid selection after dragging, don't show popup
-      if (!selection || selection.isCollapsed || !selection.toString().trim()) {
-        console.log('No valid selection after drag, not showing popup');
-        return;
-      }
-      
-      // Wait a short delay to ensure selection is stable
-      setTimeout(() => {
-        handleSelection();
-      }, 100);
-    };
-
-    // Track when dragging starts
-    const handleMouseDown = (e: MouseEvent) => {
-      // Don't process if click was inside the popup
-      if (e.target instanceof Node) {
-        const popupElement = document.querySelector('.text-selection-popup');
-        if (popupElement && popupElement.contains(e.target)) {
-          console.log('Click inside popup, ignoring');
-          return;
-        }
-      }
-      
-      // Check if click is on highlighted text but not inside popup
-      if (e.target instanceof Node) {
-        // First check if the click is directly on a .persistent-highlight element
-        const isDirectlyOnHighlight = (e.target as Element).classList?.contains('persistent-highlight');
-        
-        // Then check if it's inside a highlight element
-        const highlightedElement = document.querySelector('.persistent-highlight');
-        const isInsideHighlight = highlightedElement && highlightedElement.contains(e.target);
-        
-        // Also check if the click is within the current selection range
-        let isWithinSelectionRange = false;
-        if (selectionRange) {
-          try {
-            const view = editor.view;
-            const pos = view.posAtCoords({ left: e.clientX, top: e.clientY });
-            
-            if (pos && pos.pos >= selectionRange.from && pos.pos <= selectionRange.to) {
-              isWithinSelectionRange = true;
-            }
-          } catch (error) {
-            console.error('Error checking if click is within selection range:', error);
-          }
-        }
-        
-        if (isDirectlyOnHighlight || isInsideHighlight || isWithinSelectionRange) {
-          console.log('Click on highlighted text, clearing selection');
-          setShowPopup(false);
-          clearPersistentHighlight(editor);
-          setSelectionRange(null);
-          setSelectedText('');
-          setSelectionCoords(null);
-          
-          // Deselect text in the editor by setting cursor at click position
-          const view = editor.view;
-          const pos = view.posAtCoords({ left: e.clientX, top: e.clientY });
-          
-          if (pos) {
-            editor.commands.setTextSelection(pos.pos);
-            
-            // CRITICAL FIX: Don't prevent default when starting a new selection
-            // This allows the browser to start a new selection operation
-            // e.preventDefault();
-            
-            // Instead, mark that we're starting a new selection
-            // Use a small timeout to ensure the browser has time to process the click
-            // before we start tracking the new selection
-            setTimeout(() => {
-              isDragging.current = true;
-              isSelecting.current = true;
-              console.log('Ready for new selection after clearing highlight');
-            }, 10);
-            
-            // Return early to avoid setting isDragging again below
-            return;
-          }
-        }
-      }
-      
-      // Start tracking drag operation
-      isDragging.current = true;
-      isSelecting.current = true;
-      
-      // Hide popup and clear highlight when starting a new selection
-      setShowPopup(false);
-      clearPersistentHighlight(editor);
-    };
-
-    // Track selection changes
     const handleSelectionChange = () => {
-      // Only update if we're actively selecting
-      if (isDragging.current) {
-        lastSelectionChangeTime.current = Date.now();
-        isSelecting.current = true;
-        
-        // Always hide popup while selecting
-        setShowPopup(false);
+      if (isDragging.current || isSelecting.current) {
+        return;
       }
-    };
 
-    // Handle keyboard selection events (like Shift+Arrow keys)
-    const handleKeyUp = (e: KeyboardEvent) => {
-      // Update the last key up time
-      lastKeyUpTime.current = Date.now();
-      
-      // Only process if it's a selection-related key (Shift+Arrow, Shift+Home/End, etc.)
-      const isSelectionKey = e.shiftKey && (
-        e.key.includes('Arrow') || 
-        e.key === 'Home' || 
-        e.key === 'End' || 
-        e.key === 'PageUp' || 
-        e.key === 'PageDown'
-      );
-      
-      // Also handle when shift key is released after selection
-      const isShiftRelease = e.key === 'Shift';
-      
-      if (isSelectionKey || isShiftRelease) {
-        console.log('Keyboard selection event detected');
-        
-        // Mark selection as complete
-        isSelecting.current = false;
-        
-        // Check selection after a short delay to ensure it's stable
-        setTimeout(() => {
-          // Get the current selection
-          const selection = window.getSelection();
-          
-          // If there's no valid selection, clear any highlights
-          if (!selection || selection.isCollapsed || !selection.toString().trim()) {
-            console.log('No valid selection after keyboard event, clearing highlights');
-            setShowPopup(false);
-            clearPersistentHighlight(editor);
-            setSelectionRange(null);
-            setSelectedText('');
-            setSelectionCoords(null);
-          } else {
-            console.log('Valid keyboard selection detected, showing popup');
-            handleSelection();
-          }
-        }, 50);
-      }
-    };
-
-    // Track keyboard selection in progress
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // If the key pressed is Delete or Backspace
-      if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'Escape') {
-        // Check if the event target is inside the popup
-        if (e.target instanceof Node) {
-          const popupElement = document.querySelector('.text-selection-popup');
-          if (popupElement && popupElement.contains(e.target)) {
-            // Don't close popup if backspace is pressed inside it
-            if (e.key !== 'Escape') {
-              console.log('Backspace pressed inside popup, keeping popup open');
-              return;
-            }
-          }
-        }
-        
-        // Only clear if we're showing the popup and the key was pressed outside it
-        if (showPopup) {
-          console.log('Closing popup due to key press');
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) {
+        // Clear the popup after a delay to allow for interactions with the popup
+        const currentPopupTimeout = setTimeout(() => {
           setShowPopup(false);
-          clearPersistentHighlight(editor);
-          setSelectionRange(null);
-          setSelectedText('');
-          setSelectionCoords(null);
-        }
+        }, 300);
+        popupTimeoutRef.current = currentPopupTimeout;
+        return;
       }
-      
-      // Track if we're in the middle of a keyboard selection
-      const isSelectionKey = e.shiftKey && (
-        e.key.includes('Arrow') || 
-        e.key === 'Home' || 
-        e.key === 'End' || 
-        e.key === 'PageUp' || 
-        e.key === 'PageDown'
-      );
-      
-      if (isSelectionKey) {
-        console.log('Keyboard selection in progress');
-        isSelecting.current = true;
-        
-        // Hide popup while selecting
-        if (showPopup) {
-          setShowPopup(false);
-        }
-      }
+
+      // Set a timeout to consider the selection as "ended" after a short delay
+      const currentSelectionEndTimeout = setTimeout(() => {
+        debouncedShowPopup(true);
+      }, 500);
+      selectionEndTimeout.current = currentSelectionEndTimeout;
     };
 
-    // Add event listeners
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mouseup', handleDragEnd);
     document.addEventListener('selectionchange', handleSelectionChange);
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
-    
+
     return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mouseup', handleDragEnd);
       document.removeEventListener('selectionchange', handleSelectionChange);
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('keyup', handleKeyUp);
-      if (popupTimeoutRef.current) {
-        clearTimeout(popupTimeoutRef.current);
+      // Store the current ref values in variables to use in cleanup
+      const currentPopupTimeout = popupTimeoutRef.current;
+      const currentSelectionEndTimeout = selectionEndTimeout.current;
+      
+      if (currentPopupTimeout) {
+        clearTimeout(currentPopupTimeout);
       }
-      if (selectionEndTimeout.current) {
-        clearTimeout(selectionEndTimeout.current);
+      
+      if (currentSelectionEndTimeout) {
+        clearTimeout(currentSelectionEndTimeout);
       }
     };
-  }, [showPopup]);
+  }, [debouncedShowPopup, selectionRange]);
 
   // Function to add an action to history
   const addToActionHistory = (action: AIAction, instructions: string, modelName: GeminiModel) => {
