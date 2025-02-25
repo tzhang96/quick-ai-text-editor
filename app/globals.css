@@ -7,6 +7,7 @@
   --foreground: #171717;
   --editor-border: #e5e7eb;
   --editor-focus-border: #3b82f6;
+  --highlight-background: rgba(255, 215, 0, 0.5);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -15,6 +16,7 @@
     --foreground: #ededed;
     --editor-border: #2d2d2d;
     --editor-focus-border: #3b82f6;
+    --highlight-background: rgba(255, 215, 0, 0.4);
   }
 }
 
@@ -127,4 +129,16 @@ body {
   border: none;
   border-top: 2px solid rgba(13, 13, 13, 0.1);
   margin: 2rem 0;
+}
+
+/* Persistent highlight styles */
+.persistent-highlight {
+  background-color: var(--highlight-background);
+  border-radius: 2px;
+  padding: 1px 0;
+}
+
+/* Animation for text selection popup */
+.text-selection-popup {
+  transition: opacity 100ms ease;
 }

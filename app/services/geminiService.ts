@@ -5,6 +5,15 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 // Types for our AI operations
 export type AIAction = 'expand' | 'summarize' | 'rephrase' | 'revise';
 
+// Define valid Gemini model types
+export type GeminiModel = 
+  | 'gemini-2.0-pro-exp-02-05'  // The Pro version
+  | 'gemini-2.0-flash'         // The Flash version
+  | 'gemini-2.0-flash-lite-preview-02-05';  // The Flash Lite version
+
+// Default model to use
+export const DEFAULT_MODEL: GeminiModel = 'gemini-2.0-flash';
+
 interface AITransformationRequest {
   text: string;
   action: AIAction;
@@ -13,7 +22,7 @@ interface AITransformationRequest {
 }
 
 // Initialize the Gemini API with the API key from environment variables
-const initializeGemini = () => {
+export const initializeGemini = () => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY;
   
   if (!apiKey) {
@@ -50,14 +59,14 @@ const createPrompt = (request: AITransformationRequest): string => {
       prompt += `Action: Rephrase this text while preserving its meaning. Use the surrounding document context to ensure consistent tone and terminology.\n\n`;
       break;
     case 'revise':
-      prompt += `Action: Revise and improve this text for clarity and readability. Consider the surrounding document context for consistent style.\n\n`;
+      prompt += `Action: Correct any factual errors, inconsistencies, or inaccuracies in this text. Maintain the original style and tone while fixing only the problematic content.\n\n`;
       break;
     default:
       prompt += `Action: Process this text appropriately.\n\n`;
   }
   
   if (additionalInstructions) {
-    prompt += `Additional instructions: ${additionalInstructions}\n\n`;
+    prompt += `Additional instructions/information: ${additionalInstructions}\n\n`;
   }
   
   prompt += 'Remember to return ONLY the transformed text with no explanations or additional text. Do not include phrases like "Here is the revised text:" or any other introductory or explanatory text.';
@@ -66,12 +75,18 @@ const createPrompt = (request: AITransformationRequest): string => {
 };
 
 // Perform AI transformation on the selected text
-export const transformText = async (request: AITransformationRequest): Promise<string> => {
+export const transformText = async (
+  request: AITransformationRequest, 
+  modelName: GeminiModel = DEFAULT_MODEL
+): Promise<string> => {
   try {
     const genAI = initializeGemini();
+    // Use the provided model or fall back to the default
     const model = genAI.getGenerativeModel({ 
-      model: process.env.NEXT_PUBLIC_GOOGLE_GEMINI_MODEL || 'gemini-2.0-flash'
+      model: modelName
     });
+    
+    console.log(`Using Gemini model: ${modelName}`);
     
     const prompt = createPrompt(request);
     
@@ -79,11 +94,14 @@ export const transformText = async (request: AITransformationRequest): Promise<s
     const response = result.response;
     let text = response.text();
     
-    // Additional cleanup to remove any potential quotes or explanatory text
-    text = text.replace(/^["']|["']$/g, ''); // Remove surrounding quotes if present
-    text = text.replace(/^Here is the .+?:\s*/i, ''); // Remove intro phrases
-    text = text.replace(/```[\s\S]*?```/g, match => match.replace(/```/g, '').trim()); // Remove triple backticks if present
-    text = text.trim(); // Remove any leading or trailing whitespace including newlines
+    // Remove intro phrases but preserve internal quotes
+    text = text.replace(/^Here is the .+?:\s*/i, '');
+    
+    // Remove triple backticks if present
+    text = text.replace(/```[\s\S]*?```/g, match => match.replace(/```/g, '').trim());
+    
+    // Remove any leading or trailing whitespace including newlines
+    text = text.trim();
     
     return text;
   } catch (error) {
@@ -92,63 +110,91 @@ export const transformText = async (request: AITransformationRequest): Promise<s
   }
 };
 
-// Log edit history to both localStorage and the history API
+// Log edit history to localStorage and file API (in development)
 export const logEditHistory = async (
   originalText: string, 
   newText: string, 
-  action: AIAction,
-  additionalInstructions?: string
+  action: AIAction | string,
+  additionalInstructions?: string,
+  modelName?: GeminiModel
 ) => {
+  // Format action properly
+  let formattedAction: string;
+  
+  if (typeof action === 'string') {
+    // Handle string actions (like manual edits)
+    if (action.startsWith('manual_')) {
+      formattedAction = `MANUAL_${action.substring(7).toUpperCase()}`;
+    } else {
+      formattedAction = `AI_${action.toUpperCase()}`;
+    }
+  } else {
+    // Handle specific AIAction enum values
+    switch(action) {
+      case 'expand':
+        formattedAction = 'AI_EXPAND';
+        break;
+      case 'summarize':
+        formattedAction = 'AI_SUMMARIZE';
+        break;
+      case 'rephrase':
+        formattedAction = 'AI_REPHRASE';
+        break;
+      case 'revise':
+        formattedAction = 'AI_REVISE';
+        break;
+      default:
+        formattedAction = 'AI_ACTION';
+    }
+  }
+    
+  const timestamp = new Date().toISOString();
+  
   const editLog = {
-    timestamp: new Date().toISOString(),
-    action: `AI_${action.toUpperCase()}`,
+    timestamp,
+    action: formattedAction,
     originalText,
     newText,
-    additionalInstructions
+    additionalInstructions,
+    modelName // Add the model name to the edit log
   };
   
   // Log to console for debugging
   console.log('Edit logged:', editLog);
   
   try {
-    // Store in localStorage for client-side history viewing
+    // Always store in localStorage for client-side history viewing
     const history = localStorage.getItem('editHistory');
     const editHistory = history ? JSON.parse(history) : [];
     editHistory.push(editLog);
     localStorage.setItem('editHistory', JSON.stringify(editHistory));
     
-    // Save to Vercel KV via API for permanent storage
-    try {
-      const response = await fetch('/api/kv-history', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(editLog),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to save edit history to KV');
-      }
-    } catch (kvError) {
-      console.error('Error saving to KV, falling back to file-based API:', kvError);
-      
-      // Fallback to original file-based API for backward compatibility
-      const fileResponse = await fetch('/api/history', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          originalText,
-          newText,
-          action,
-          additionalInstructions
-        }),
-      });
-      
-      if (!fileResponse.ok) {
-        throw new Error('Failed to save edit history to server');
+    // Also save to file API in development (not in production)
+    if (window.location.hostname === 'localhost' || 
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.includes('.local')) {
+      try {
+        const response = await fetch('/api/history', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            timestamp,
+            originalText,
+            newText,
+            action,
+            additionalInstructions,
+            modelName // Add the model to the API call
+          }),
+        });
+        
+        if (!response.ok) {
+          console.warn('Could not save edit history to file (development only)');
+        }
+      } catch (apiError) {
+        // Don't fail if the API call fails
+        console.warn('Error saving to history API (development only):', apiError);
       }
     }
   } catch (error) {

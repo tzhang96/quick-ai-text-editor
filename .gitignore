@@ -42,3 +42,5 @@ next-env.d.ts
 
 # edit history log
 edit-history.json
+
+.vercel

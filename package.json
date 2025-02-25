@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.22.0",
+    "@tiptap/extension-color": "^2.11.5",
     "@tiptap/extension-highlight": "^2.11.5",
     "@tiptap/extension-placeholder": "^2.11.5",
     "@tiptap/extension-text-style": "^2.11.5",
@@ -19,12 +20,14 @@
     "@tiptap/starter-kit": "^2.11.5",
     "@vercel/kv": "^3.0.0",
     "axios": "^1.7.9",
+    "lodash": "^4.17.21",
     "next": "15.1.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@types/lodash": "^4.17.15",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

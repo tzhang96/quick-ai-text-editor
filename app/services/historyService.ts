@@ -1,6 +1,6 @@
 "use client";
 
-import { AIAction } from './geminiService';
+import { AIAction, GeminiModel } from './geminiService';
 
 // Define the interface for an edit event
 export interface EditEvent {
@@ -9,6 +9,7 @@ export interface EditEvent {
   originalText: string;
   newText: string;
   additionalInstructions?: string;
+  modelName?: GeminiModel; // Add model information
 }
 
 // We need different implementations for client and server
@@ -86,13 +87,15 @@ export const createEditEvent = (
   originalText: string,
   newText: string,
   action: string | AIAction,
-  additionalInstructions?: string
+  additionalInstructions?: string,
+  modelName?: GeminiModel
 ): EditEvent => {
   return {
     timestamp: new Date().toISOString(),
     action: formatActionName(action),
     originalText,
     newText,
-    additionalInstructions
+    additionalInstructions,
+    modelName
   };
 }; 

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import type { EditEvent } from '@/app/services/historyService';
 import type { AIAction } from '@/app/services/geminiService';
+import type { GeminiModel } from '@/app/services/geminiService';
 
 const LOG_FILE_PATH = path.join(process.cwd(), 'edit-history.json');
 
@@ -56,14 +57,17 @@ const serverCreateEditEvent = (
   originalText: string,
   newText: string,
   action: string | AIAction,
-  additionalInstructions?: string
+  additionalInstructions?: string,
+  modelName?: GeminiModel,
+  timestamp?: string
 ): EditEvent => {
   return {
-    timestamp: new Date().toISOString(),
+    timestamp: timestamp || new Date().toISOString(),
     action: formatActionName(action),
     originalText,
     newText,
-    additionalInstructions
+    additionalInstructions,
+    modelName
   };
 };
 
@@ -109,7 +113,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const data = await request.json();
-    const { originalText, newText, action, additionalInstructions } = data;
+    const { timestamp, originalText, newText, action, additionalInstructions, modelName } = data;
     
     // Validate required fields
     if (!originalText || !newText || !action) {
@@ -120,7 +124,7 @@ export async function POST(request: Request) {
     }
     
     // Create and save the event using server-side implementation
-    const event = serverCreateEditEvent(originalText, newText, action, additionalInstructions);
+    const event = serverCreateEditEvent(originalText, newText, action, additionalInstructions, modelName, timestamp);
     await addServerHistoryEvent(event);
     
     return NextResponse.json({ success: true, event });
