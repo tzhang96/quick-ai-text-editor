@@ -48,14 +48,14 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     });
   }, [text, position, editor, modelName]);
 
-  // Make popup appear with animation - much faster now
+  // Make popup appear immediately
   useEffect(() => {
-    // Almost immediate appearance
-    const timer = setTimeout(() => {
-      setIsVisible(true);
-    }, 10);
+    // Set visible immediately
+    setIsVisible(true);
     
-    return () => clearTimeout(timer);
+    return () => {
+      // No cleanup needed
+    };
   }, []);
 
   // Position the popup and ensure it's within viewport
@@ -295,16 +295,20 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
   return (
     <div
       ref={popupRef}
-      className={`fixed top-0 left-0 z-50 transition-opacity duration-100 ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'} ${className}`}
+      className={`fixed top-0 left-0 z-50 ${isVisible ? 'opacity-100' : 'opacity-0'} ${className}`}
       style={{ 
         transform: `translate(${position.x}px, ${position.y}px)`,
         transformOrigin: 'top center',
-        transition: 'opacity 150ms ease, transform 150ms ease'
+        transition: 'opacity 50ms ease', // Only fade opacity, no movement animation
+        pointerEvents: 'none' // Prevent mouse events on the container to fix flickering
       }}
-      onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="bg-white shadow-lg rounded-lg border border-gray-200 overflow-hidden w-64">
+      <div 
+        className="bg-white shadow-lg rounded-lg border border-gray-200 overflow-hidden w-64"
+        style={{ pointerEvents: 'auto' }} // Re-enable pointer events for the content
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="p-3 space-y-3">
           <div className="flex flex-wrap gap-1.5">
             <button

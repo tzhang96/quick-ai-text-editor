@@ -134,6 +134,8 @@ const Editor = () => {
   // const editorRef = useRef<HTMLDivElement>(null);
   const editorInstance = useRef<TiptapEditor | null>(null);
   const persistentHighlightExtension = useRef<typeof PersistentHighlight | null>(null);
+  const lastMouseUpTime = useRef<number>(0);
+  const lastKeyUpTime = useRef<number>(0);
   const textChangeTracker = useRef<TextChangeTracker>({
     previousContent: '',
     changeTimer: null,
@@ -216,11 +218,14 @@ const Editor = () => {
       const selection = window.getSelection();
       
       // Add debug logging for production troubleshooting
-      console.log('Selection debug:', { 
+      console.log('Selection debug (handleSelection):', { 
         hasSelection: !!selection, 
         selectionText: selection?.toString().trim() || '',
         editorElement: !!editor.view.dom,
-        inEditor: selection?.anchorNode ? editor.view.dom.contains(selection.anchorNode) : false
+        inEditor: selection?.anchorNode ? editor.view.dom.contains(selection.anchorNode) : false,
+        selectionRange: editor.state.selection,
+        selectionEmpty: editor.state.selection.empty,
+        popupAlreadyShowing: showPopup
       });
       
       // Check if selection exists, has content, and is within the editor
@@ -243,23 +248,23 @@ const Editor = () => {
               y: rect.bottom + window.scrollY
             };
             
-            console.log('Valid selection detected:', { selText, coords });
+            console.log('Valid selection detected (handleSelection):', { selText, coords });
             setSelectionCoords(coords);
             
-            // Show popup with almost no delay now (50ms)
+            // Show popup with a slight delay to ensure user has finished selecting
             if (popupTimeoutRef.current) {
               clearTimeout(popupTimeoutRef.current);
             }
             popupTimeoutRef.current = setTimeout(() => {
               setShowPopup(true);
-              console.log('Popup state updated:', { showPopup: true });
-            }, 50);
+              console.log('Popup state updated (handleSelection):', { showPopup: true });
+            }, 100); // Small delay to ensure selection is complete
             return; // Exit early on successful processing
           } else {
-            console.warn('Invalid selection rectangle:', rect);
+            console.warn('Invalid selection rectangle (handleSelection):', rect);
           }
         } catch (error) {
-          console.error('Error processing selection:', error);
+          console.error('Error processing selection (handleSelection):', error);
         }
       }
       
@@ -269,11 +274,16 @@ const Editor = () => {
         clearTimeout(popupTimeoutRef.current);
       }
       setShowPopup(false);
-      console.log('No valid selection, hiding popup');
+      console.log('No valid selection, hiding popup (handleSelection)');
     };
 
     // Handle mouse events
     const handleMouseUp = (e: MouseEvent) => {
+      console.log('Mouse up event detected');
+      
+      // Update the last mouse up time
+      lastMouseUpTime.current = Date.now();
+      
       // Don't process if click was inside the popup
       if (e.target instanceof Node) {
         const popupElement = document.querySelector('.text-selection-popup');
@@ -283,8 +293,46 @@ const Editor = () => {
         }
       }
       
-      // Wait a moment for the selection to be updated
-      setTimeout(handleSelection, 50); // Increased from 10ms to 50ms for better reliability
+      // Always wait a moment after mouseup to check for selection
+      // This ensures we catch selections made by double-clicking or dragging
+      setTimeout(() => {
+        // Check if there's a selection after the delay
+        const finalSelection = window.getSelection();
+        if (finalSelection && finalSelection.toString().trim().length > 0) {
+          console.log('Selection confirmed after mouseup delay, calling handleSelection');
+          handleSelection();
+        } else {
+          console.log('No selection after mouseup delay');
+        }
+      }, 150); // 150ms delay to ensure selection is complete
+    };
+    
+    // Handle keyboard selection events (like Shift+Arrow keys)
+    const handleKeyUp = (e: KeyboardEvent) => {
+      // Update the last key up time
+      lastKeyUpTime.current = Date.now();
+      
+      // Only process if it's a selection-related key (Shift+Arrow, Shift+Home/End, etc.)
+      const isSelectionKey = e.shiftKey && (
+        e.key.includes('Arrow') || 
+        e.key === 'Home' || 
+        e.key === 'End' || 
+        e.key === 'PageUp' || 
+        e.key === 'PageDown'
+      );
+      
+      if (isSelectionKey) {
+        console.log('Keyboard selection detected');
+        
+        // Wait a moment to ensure the selection is complete
+        setTimeout(() => {
+          const selection = window.getSelection();
+          if (selection && selection.toString().trim().length > 0) {
+            console.log('Valid keyboard selection confirmed, calling handleSelection');
+            handleSelection();
+          }
+        }, 100);
+      }
     };
     
     const handleMouseDown = (e: MouseEvent) => {
@@ -320,11 +368,13 @@ const Editor = () => {
     document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('mousedown', handleMouseDown);
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
     
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
       if (popupTimeoutRef.current) {
         clearTimeout(popupTimeoutRef.current);
       }
@@ -407,6 +457,52 @@ const Editor = () => {
         // Get the selected text
         const selectedText = editor.state.doc.textBetween(from, to, ' ');
         setSelectedText(selectedText);
+        
+        // Get coordinates for the popup - this is crucial for the first selection
+        try {
+          const domSelection = window.getSelection();
+          if (domSelection && domSelection.rangeCount > 0) {
+            const range = domSelection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            
+            // Only set coords if we got a valid rectangle
+            if (rect && rect.width > 0 && rect.height > 0) {
+              const coords = {
+                x: rect.left + window.scrollX,
+                y: rect.bottom + window.scrollY
+              };
+              
+              console.log('Selection update coords:', coords);
+              setSelectionCoords(coords);
+              
+              // We don't automatically show the popup here anymore
+              // This prevents the popup from appearing during selection dragging
+              // The popup will be shown by handleMouseUp or handleKeyUp after the selection is complete
+              
+              // However, we need to handle programmatic selections (like API-triggered ones)
+              // If this selection wasn't triggered by a mouse or keyboard event, show the popup
+              // We can detect this by checking if the selection was made within the last 300ms
+              const now = Date.now();
+              const lastInteractionTime = Math.max(
+                lastMouseUpTime.current || 0,
+                lastKeyUpTime.current || 0
+              );
+              
+              if (now - lastInteractionTime > 300) {
+                console.log('Programmatic selection detected, showing popup');
+                // This is likely a programmatic selection, so show the popup
+                if (popupTimeoutRef.current) {
+                  clearTimeout(popupTimeoutRef.current);
+                }
+                popupTimeoutRef.current = setTimeout(() => {
+                  setShowPopup(true);
+                }, 100);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error getting selection coordinates:', error);
+        }
       } else if (!showPopup) {
         // Only clear if popup is not shown (to prevent clearing when clicking in the popup)
         setSelectedText('');
@@ -603,6 +699,34 @@ const Editor = () => {
       document.removeEventListener('keydown', handleKeyboardShortcut);
     };
   }, [forceShowPopupForCurrentSelection]);
+
+  // Add a special initialization effect to ensure everything is ready
+  useEffect(() => {
+    console.log('Editor component mounted, initializing selection handling');
+    
+    // Force a re-render of the editor after a short delay to ensure all event handlers are properly bound
+    const initTimer = setTimeout(() => {
+      const editor = editorInstance.current;
+      if (editor) {
+        console.log('Editor fully initialized and ready for selections');
+        
+        // Check if there's already a selection when the component mounts
+        const { from, to } = editor.state.selection;
+        if (from !== to) {
+          console.log('Initial selection detected, range:', { from, to });
+          
+          // Get the selected text
+          const selectedText = editor.state.doc.textBetween(from, to, ' ');
+          console.log('Initial selected text:', selectedText);
+          
+          // This will trigger the selection update handler
+          editor.commands.focus();
+        }
+      }
+    }, 500);
+    
+    return () => clearTimeout(initTimer);
+  }, []); // Empty dependency array means this runs once on mount
 
   if (!editor) {
     return <div>Loading editor...</div>;
