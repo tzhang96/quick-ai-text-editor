@@ -140,9 +140,6 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       }, modelName);
       
       if (result) {
-        // Remember the current cursor position
-        const currentPos = editor.state.selection.from;
-        
         // Replace the selected text with the transformed text
         editor.commands.deleteSelection();
         const insertPos = editor.state.selection.from;

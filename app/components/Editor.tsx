@@ -119,12 +119,12 @@ const Editor = () => {
   const [selectedText, setSelectedText] = useState<string>('');
   const [selectionCoords, setSelectionCoords] = useState<{ x: number, y: number } | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  // const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [actionHistory, setActionHistory] = useState<ActionHistoryItem[]>([]);
   const [selectionRange, setSelectionRange] = useState<{ from: number; to: number } | null>(null);
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
+  // const editorRef = useRef<HTMLDivElement>(null);
   const editorInstance = useRef<TiptapEditor | null>(null);
   const persistentHighlightExtension = useRef<typeof PersistentHighlight | null>(null);
   const textChangeTracker = useRef<TextChangeTracker>({
@@ -415,15 +415,6 @@ const Editor = () => {
     }
   }, [editor]);
 
-  // Close popup and remove highlights
-  const handleClosePopup = () => {
-    // Clear any persistent highlight
-    if (editor) {
-      setPersistentHighlight(editor, null);
-    }
-    setShowPopup(false);
-  };
-
   // Track manual text edits
   const trackManualEdits = useCallback(
     debounce((editor: TiptapEditor) => {
@@ -511,69 +502,69 @@ const Editor = () => {
   };
   
   // Get model description
-  const getModelDescription = (model: GeminiModel): string => {
-    switch(model) {
-      case 'gemini-2.0-pro-exp-02-05': return 'Best quality, slower';
-      case 'gemini-2.0-flash': return 'Balanced speed/quality';
-      case 'gemini-2.0-flash-lite-preview-02-05': return 'Fastest, lower quality';
-      default: return '';
-    }
-  };
+  // const getModelDescription = (model: GeminiModel): string => {
+  //   switch(model) {
+  //     case 'gemini-2.0-pro-exp-02-05': return 'Best quality, slower';
+  //     case 'gemini-2.0-flash': return 'Balanced speed/quality';
+  //     case 'gemini-2.0-flash-lite-preview-02-05': return 'Fastest, lower quality';
+  //     default: return '';
+  //   }
+  // };
 
   if (!editor) {
     return <div>Loading editor...</div>;
   }
   
   // Helper functions for exporting content
-  const exportContent = (format: 'text' | 'html' | 'markdown') => {
-    if (!editor) return;
+  // const exportContent = (format: 'text' | 'html' | 'markdown') => {
+  //   if (!editor) return;
     
-    let content = '';
-    let filename = `ai-editor-export-${new Date().toISOString().slice(0,10)}`;
-    let mimeType = 'text/plain';
+  //   let content = '';
+  //   let filename = `ai-editor-export-${new Date().toISOString().slice(0,10)}`;
+  //   let mimeType = 'text/plain';
     
-    switch (format) {
-      case 'text':
-        content = editor.getText();
-        filename += '.txt';
-        break;
-      case 'html':
-        content = editor.getHTML();
-        filename += '.html';
-        mimeType = 'text/html';
-        break;
-      case 'markdown':
-        // Basic HTML to Markdown conversion (simplified)
-        content = editor.getHTML()
-          .replace(/<h1>(.*?)<\/h1>/g, '# $1\n\n')
-          .replace(/<h2>(.*?)<\/h2>/g, '## $1\n\n')
-          .replace(/<h3>(.*?)<\/h3>/g, '### $1\n\n')
-          .replace(/<p>(.*?)<\/p>/g, '$1\n\n')
-          .replace(/<strong>(.*?)<\/strong>/g, '**$1**')
-          .replace(/<em>(.*?)<\/em>/g, '*$1*')
-          .replace(/<u>(.*?)<\/u>/g, '_$1_')
-          .replace(/<li>(.*?)<\/li>/g, '- $1\n')
-          .replace(/<blockquote>(.*?)<\/blockquote>/g, '> $1\n\n')
-          .replace(/<br\s*\/?>/g, '\n')
-          .replace(/<[^>]*>/g, ''); // Remove any remaining HTML tags
-        filename += '.md';
-        break;
-    }
+  //   switch (format) {
+  //     case 'text':
+  //       content = editor.getText();
+  //       filename += '.txt';
+  //       break;
+  //     case 'html':
+  //       content = editor.getHTML();
+  //       filename += '.html';
+  //       mimeType = 'text/html';
+  //       break;
+  //     case 'markdown':
+  //       // Basic HTML to Markdown conversion (simplified)
+  //       content = editor.getHTML()
+  //         .replace(/<h1>(.*?)<\/h1>/g, '# $1\n\n')
+  //         .replace(/<h2>(.*?)<\/h2>/g, '## $1\n\n')
+  //         .replace(/<h3>(.*?)<\/h3>/g, '### $1\n\n')
+  //         .replace(/<p>(.*?)<\/p>/g, '$1\n\n')
+  //         .replace(/<strong>(.*?)<\/strong>/g, '**$1**')
+  //         .replace(/<em>(.*?)<\/em>/g, '*$1*')
+  //         .replace(/<u>(.*?)<\/u>/g, '_$1_')
+  //         .replace(/<li>(.*?)<\/li>/g, '- $1\n')
+  //         .replace(/<blockquote>(.*?)<\/blockquote>/g, '> $1\n\n')
+  //         .replace(/<br\s*\/?>/g, '\n')
+  //         .replace(/<[^>]*>/g, ''); // Remove any remaining HTML tags
+  //       filename += '.md';
+  //       break;
+  //   }
     
-    // Create the download
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  //   // Create the download
+  //   const blob = new Blob([content], { type: mimeType });
+  //   const url = URL.createObjectURL(blob);
+  //   const a = document.createElement('a');
+  //   a.href = url;
+  //   a.download = filename;
+  //   document.body.appendChild(a);
+  //   a.click();
+  //   document.body.removeChild(a);
+  //   URL.revokeObjectURL(url);
     
-    // Close the export menu after exporting
-    setExportMenuOpen(false);
-  };
+  //   // Close the export menu after exporting
+  //   // setExportMenuOpen(false);
+  // };
 
   return (
     <div className="text-editor w-full max-w-4xl mx-auto rounded-xl overflow-hidden shadow-xl border border-gray-100 bg-white">

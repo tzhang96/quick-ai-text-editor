@@ -301,7 +301,7 @@ const EditHistoryViewer: React.FC<EditHistoryViewerProps> = ({ onClose }) => {
         <div className="bg-blue-50 p-3 text-sm">
           <p className="text-blue-700 mb-1 font-medium">About Edit History Storage:</p>
           <p className="text-blue-600">
-            • Your edit history is stored in your browser's localStorage
+            • Your edit history is stored in your browser&apos;s localStorage
             <br />
             {window.location.hostname === 'localhost' || 
              window.location.hostname === '127.0.0.1' || 
