@@ -206,18 +206,15 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
         // Set selection to the entire transformed text
         editor.commands.setTextSelection({ from: newFrom, to: newTo });
         
-        // Update persistent highlight to cover the new content
-        const extensionStorage = editor.extensionManager.extensions.find(
+        // Clear the persistent highlight after transformation
+        const extension = editor.extensionManager.extensions.find(
           ext => ext.name === 'persistentHighlight'
-        )?.storage;
+        );
         
-        if (extensionStorage && extensionStorage.highlights) {
-          // Update the highlight to match the new selection
-          if (extensionStorage.highlights.length > 0) {
-            extensionStorage.highlights[0].from = newFrom;
-            extensionStorage.highlights[0].to = newTo;
-            editor.view.dispatch(editor.state.tr); // Force redraw
-          }
+        if (extension) {
+          // Clear highlights
+          extension.storage.highlights = [];
+          editor.view.dispatch(editor.state.tr); // Force redraw
         }
         
         // Explicitly log the edit to history with all details
@@ -295,34 +292,52 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       <div 
         className="bg-white shadow-lg rounded-lg border border-gray-200 overflow-hidden w-64"
         style={{ pointerEvents: 'auto' }} // Re-enable pointer events for the content
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault(); // Prevent any default behavior
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault(); // Prevent any default behavior
+        }}
       >
         <div className="p-3 space-y-3">
           <div className="flex flex-wrap gap-1.5">
             <button
-              onClick={() => handleAIAction('expand')}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAIAction('expand');
+              }}
               className="bg-indigo-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-600 shadow-sm transition-colors"
               disabled={isLoading}
             >
               Expand
             </button>
             <button
-              onClick={() => handleAIAction('summarize')}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAIAction('summarize');
+              }}
               className="bg-green-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-green-600 shadow-sm transition-colors"
               disabled={isLoading}
             >
               Summarize
             </button>
             <button
-              onClick={() => handleAIAction('rephrase')}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAIAction('rephrase');
+              }}
               className="bg-yellow-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-yellow-600 shadow-sm transition-colors"
               disabled={isLoading}
             >
               Rephrase
             </button>
             <button
-              onClick={() => handleAIAction('revise')}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAIAction('revise');
+              }}
               className="bg-purple-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-purple-600 shadow-sm transition-colors"
               disabled={isLoading}
             >
@@ -331,7 +346,10 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
             
             {actionHistory.length > 0 && (
               <button
-                onClick={() => setShowHistory(!showHistory)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowHistory(!showHistory);
+                }}
                 className="bg-gray-100 text-gray-700 px-2 py-1.5 rounded-md text-sm hover:bg-gray-200 shadow-sm border border-gray-200 transition-colors"
                 disabled={isLoading}
                 title="Show recent actions"
@@ -349,7 +367,10 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
               {actionHistory.map((item, index) => (
                 <button
                   key={index}
-                  onClick={() => applyHistoricalAction(item)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    applyHistoricalAction(item);
+                  }}
                   className={`w-full text-left mb-1.5 p-1.5 rounded-md text-xs ${getActionColor(item.action)} text-white flex justify-between items-center shadow-sm`}
                 >
                   <span className="font-medium">{getActionLabel(item.action)}</span>
@@ -368,7 +389,12 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
               type="text"
               placeholder="Additional instructions (optional)"
               value={additionalInstructions}
-              onChange={(e) => setAdditionalInstructions(e.target.value)}
+              onChange={(e) => {
+                e.stopPropagation();
+                setAdditionalInstructions(e.target.value);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
               className="w-full border rounded-md p-2 text-sm focus:ring-1 focus:ring-indigo-300 focus:border-indigo-300 shadow-sm"
               disabled={isLoading}
             />

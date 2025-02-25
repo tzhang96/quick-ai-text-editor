@@ -126,12 +126,11 @@ const Editor = () => {
   const [selectedText, setSelectedText] = useState<string>('');
   const [selectionCoords, setSelectionCoords] = useState<{ x: number, y: number } | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  // const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [actionHistory, setActionHistory] = useState<ActionHistoryItem[]>([]);
   const [selectionRange, setSelectionRange] = useState<{ from: number; to: number } | null>(null);
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // const editorRef = useRef<HTMLDivElement>(null);
   const editorInstance = useRef<TiptapEditor | null>(null);
   const persistentHighlightExtension = useRef<typeof PersistentHighlight | null>(null);
   const lastMouseUpTime = useRef<number>(0);
@@ -142,9 +141,33 @@ const Editor = () => {
     isTracking: false,
     ignoreNextChange: false
   });
+  const isSelecting = useRef<boolean>(false);
+  const lastSelectionChangeTime = useRef<number>(0);
+  const selectionEndTimeout = useRef<NodeJS.Timeout | null>(null);
+  const isDragging = useRef<boolean>(false);
 
   // Model selection state with default value
   const [activeModel, setActiveModel] = useState<GeminiModel>(DEFAULT_MODEL);
+
+  // Add a ref for the export menu
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Add a click outside handler for the export menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+
+    if (exportMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [exportMenuOpen]);
 
   // Initialize Gemini when component mounts
   useEffect(() => {
@@ -157,7 +180,7 @@ const Editor = () => {
       if (savedModel && [
         'gemini-2.0-pro-exp-02-05', 
         'gemini-2.0-flash', 
-        'gemini-2.0-flash-lite-preview-02-05'
+        'gemini-2.0-flash-lite'
       ].includes(savedModel)) {
         setActiveModel(savedModel);
         console.log('Loaded preferred model:', savedModel);
@@ -208,82 +231,108 @@ const Editor = () => {
     }
   };
 
+  // Add a debounced function to show the popup
+  const debouncedShowPopup = useCallback(
+    debounce((shouldShow: boolean) => {
+      if (shouldShow && !isSelecting.current && !isDragging.current) {
+        console.log('Debounced popup show triggered');
+        setShowPopup(true);
+      }
+    }, 50),
+    []
+  );
+
   // This effect handles the selection and showing the popup
   useEffect(() => {
     const editor = editorInstance.current;
     if (!editor) return;
     
     const handleSelection = () => {
-      // Get the current selection
-      const selection = window.getSelection();
-      
-      // Add debug logging for production troubleshooting
-      console.log('Selection debug (handleSelection):', { 
-        hasSelection: !!selection, 
-        selectionText: selection?.toString().trim() || '',
-        editorElement: !!editor.view.dom,
-        inEditor: selection?.anchorNode ? editor.view.dom.contains(selection.anchorNode) : false,
-        selectionRange: editor.state.selection,
-        selectionEmpty: editor.state.selection.empty,
-        popupAlreadyShowing: showPopup
-      });
+      // Don't show popup if we're still in the process of selecting text
+      if (isSelecting.current) {
+        console.log('User is actively selecting text, not showing popup yet');
+        return;
+      }
       
       // Check if selection exists, has content, and is within the editor
-      if (selection && 
-          selection.toString().trim().length > 0 && 
-          editor.view.dom.contains(selection.anchorNode)) {
-        
-        try {
-          const range = selection.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          
-          // Verify we got valid coordinates
-          if (rect && rect.width > 0 && rect.height > 0) {
-            // Store the current selection text and position
-            const selText = selection.toString();
-            setSelectedText(selText);
-            
-            const coords = {
-              x: rect.left + window.scrollX,
-              y: rect.bottom + window.scrollY
-            };
-            
-            console.log('Valid selection detected (handleSelection):', { selText, coords });
-            setSelectionCoords(coords);
-            
-            // Show popup with a slight delay to ensure user has finished selecting
-            if (popupTimeoutRef.current) {
-              clearTimeout(popupTimeoutRef.current);
-            }
-            popupTimeoutRef.current = setTimeout(() => {
-              setShowPopup(true);
-              console.log('Popup state updated (handleSelection):', { showPopup: true });
-            }, 100); // Small delay to ensure selection is complete
-            return; // Exit early on successful processing
-          } else {
-            console.warn('Invalid selection rectangle (handleSelection):', rect);
-          }
-        } catch (error) {
-          console.error('Error processing selection (handleSelection):', error);
-        }
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      
+      const range = selection.getRangeAt(0);
+      if (range.collapsed) {
+        // No text selected, hide popup
+        setShowPopup(false);
+        return;
       }
       
-      // If we reach here, either the selection is invalid or an error occurred
-      // Hide popup if selection doesn't exist or is empty
-      if (popupTimeoutRef.current) {
-        clearTimeout(popupTimeoutRef.current);
+      // Check if selection is within the editor
+      if (!editor.view.dom.contains(selection.anchorNode)) {
+        setShowPopup(false);
+        return;
       }
-      setShowPopup(false);
-      console.log('No valid selection, hiding popup (handleSelection)');
+      
+      // Get selected text
+      const selectedText = selection.toString().trim();
+      if (!selectedText) {
+        setShowPopup(false);
+        return;
+      }
+      
+      try {
+        // Get selection rectangle
+        const rect = range.getBoundingClientRect();
+        
+        // Set popup position and content
+        setSelectedText(selectedText);
+        setSelectionCoords({
+          x: rect.left + window.scrollX,
+          y: rect.bottom + window.scrollY
+        });
+        
+        // Store selection range for highlighting
+        const { from, to } = editor.state.selection;
+        setSelectionRange({ from, to });
+        
+        // Apply persistent highlight
+        setPersistentHighlight(editor, { from, to });
+        
+        // Show popup using debounce to ensure selection is stable
+        console.log('Selection complete, scheduling popup for text:', selectedText.substring(0, 30) + (selectedText.length > 30 ? '...' : ''));
+        debouncedShowPopup(true);
+      } catch (error) {
+        console.error('Error processing selection:', error);
+        setShowPopup(false);
+      }
     };
 
-    // Handle mouse events
-    const handleMouseUp = (e: MouseEvent) => {
-      console.log('Mouse up event detected');
+    // Handle when mouse is released after dragging
+    const handleDragEnd = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      
+      console.log('Drag ended, checking selection');
+      isDragging.current = false;
+      isSelecting.current = false;
       
       // Update the last mouse up time
       lastMouseUpTime.current = Date.now();
       
+      // Get the current selection
+      const selection = window.getSelection();
+      
+      // If there's no valid selection after dragging, don't show popup
+      if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+        console.log('No valid selection after drag, not showing popup');
+        return;
+      }
+      
+      // Wait a short delay to ensure selection is stable
+      setTimeout(() => {
+        handleSelection();
+      }, 100);
+    };
+
+    // Track when dragging starts
+    const handleMouseDown = (e: MouseEvent) => {
       // Don't process if click was inside the popup
       if (e.target instanceof Node) {
         const popupElement = document.querySelector('.text-selection-popup');
@@ -293,20 +342,85 @@ const Editor = () => {
         }
       }
       
-      // Always wait a moment after mouseup to check for selection
-      // This ensures we catch selections made by double-clicking or dragging
-      setTimeout(() => {
-        // Check if there's a selection after the delay
-        const finalSelection = window.getSelection();
-        if (finalSelection && finalSelection.toString().trim().length > 0) {
-          console.log('Selection confirmed after mouseup delay, calling handleSelection');
-          handleSelection();
-        } else {
-          console.log('No selection after mouseup delay');
+      // Check if click is on highlighted text but not inside popup
+      if (e.target instanceof Node) {
+        // First check if the click is directly on a .persistent-highlight element
+        const isDirectlyOnHighlight = (e.target as Element).classList?.contains('persistent-highlight');
+        
+        // Then check if it's inside a highlight element
+        const highlightedElement = document.querySelector('.persistent-highlight');
+        const isInsideHighlight = highlightedElement && highlightedElement.contains(e.target);
+        
+        // Also check if the click is within the current selection range
+        let isWithinSelectionRange = false;
+        if (selectionRange) {
+          try {
+            const view = editor.view;
+            const pos = view.posAtCoords({ left: e.clientX, top: e.clientY });
+            
+            if (pos && pos.pos >= selectionRange.from && pos.pos <= selectionRange.to) {
+              isWithinSelectionRange = true;
+            }
+          } catch (error) {
+            console.error('Error checking if click is within selection range:', error);
+          }
         }
-      }, 150); // 150ms delay to ensure selection is complete
+        
+        if (isDirectlyOnHighlight || isInsideHighlight || isWithinSelectionRange) {
+          console.log('Click on highlighted text, clearing selection');
+          setShowPopup(false);
+          clearPersistentHighlight(editor);
+          setSelectionRange(null);
+          setSelectedText('');
+          setSelectionCoords(null);
+          
+          // Deselect text in the editor by setting cursor at click position
+          const view = editor.view;
+          const pos = view.posAtCoords({ left: e.clientX, top: e.clientY });
+          
+          if (pos) {
+            editor.commands.setTextSelection(pos.pos);
+            
+            // CRITICAL FIX: Don't prevent default when starting a new selection
+            // This allows the browser to start a new selection operation
+            // e.preventDefault();
+            
+            // Instead, mark that we're starting a new selection
+            // Use a small timeout to ensure the browser has time to process the click
+            // before we start tracking the new selection
+            setTimeout(() => {
+              isDragging.current = true;
+              isSelecting.current = true;
+              console.log('Ready for new selection after clearing highlight');
+            }, 10);
+            
+            // Return early to avoid setting isDragging again below
+            return;
+          }
+        }
+      }
+      
+      // Start tracking drag operation
+      isDragging.current = true;
+      isSelecting.current = true;
+      
+      // Hide popup and clear highlight when starting a new selection
+      setShowPopup(false);
+      clearPersistentHighlight(editor);
     };
-    
+
+    // Track selection changes
+    const handleSelectionChange = () => {
+      // Only update if we're actively selecting
+      if (isDragging.current) {
+        lastSelectionChangeTime.current = Date.now();
+        isSelecting.current = true;
+        
+        // Always hide popup while selecting
+        setShowPopup(false);
+      }
+    };
+
     // Handle keyboard selection events (like Shift+Arrow keys)
     const handleKeyUp = (e: KeyboardEvent) => {
       // Update the last key up time
@@ -321,40 +435,55 @@ const Editor = () => {
         e.key === 'PageDown'
       );
       
-      if (isSelectionKey) {
-        console.log('Keyboard selection detected');
+      // Also handle when shift key is released after selection
+      const isShiftRelease = e.key === 'Shift';
+      
+      if (isSelectionKey || isShiftRelease) {
+        console.log('Keyboard selection event detected');
         
-        // Wait a moment to ensure the selection is complete
+        // Mark selection as complete
+        isSelecting.current = false;
+        
+        // Check selection after a short delay to ensure it's stable
         setTimeout(() => {
+          // Get the current selection
           const selection = window.getSelection();
-          if (selection && selection.toString().trim().length > 0) {
-            console.log('Valid keyboard selection confirmed, calling handleSelection');
+          
+          // If there's no valid selection, clear any highlights
+          if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+            console.log('No valid selection after keyboard event, clearing highlights');
+            setShowPopup(false);
+            clearPersistentHighlight(editor);
+            setSelectionRange(null);
+            setSelectedText('');
+            setSelectionCoords(null);
+          } else {
+            console.log('Valid keyboard selection detected, showing popup');
             handleSelection();
           }
-        }, 100);
+        }, 50);
       }
     };
-    
-    const handleMouseDown = (e: MouseEvent) => {
-      // Don't hide popup if click was inside it
-      if (e.target instanceof Node) {
-        const popupElement = document.querySelector('.text-selection-popup');
-        if (popupElement && popupElement.contains(e.target)) {
-          return;
-        }
-      }
-      
-      // Hide popup and clear highlight when starting a new selection
-      setShowPopup(false);
-      clearPersistentHighlight(editor);
-    };
-    
-    // Handle keydown for keyboard interaction
+
+    // Track keyboard selection in progress
     const handleKeyDown = (e: KeyboardEvent) => {
       // If the key pressed is Delete or Backspace
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        // Only clear if we're showing the popup
+      if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'Escape') {
+        // Check if the event target is inside the popup
+        if (e.target instanceof Node) {
+          const popupElement = document.querySelector('.text-selection-popup');
+          if (popupElement && popupElement.contains(e.target)) {
+            // Don't close popup if backspace is pressed inside it
+            if (e.key !== 'Escape') {
+              console.log('Backspace pressed inside popup, keeping popup open');
+              return;
+            }
+          }
+        }
+        
+        // Only clear if we're showing the popup and the key was pressed outside it
         if (showPopup) {
+          console.log('Closing popup due to key press');
           setShowPopup(false);
           clearPersistentHighlight(editor);
           setSelectionRange(null);
@@ -362,21 +491,45 @@ const Editor = () => {
           setSelectionCoords(null);
         }
       }
+      
+      // Track if we're in the middle of a keyboard selection
+      const isSelectionKey = e.shiftKey && (
+        e.key.includes('Arrow') || 
+        e.key === 'Home' || 
+        e.key === 'End' || 
+        e.key === 'PageUp' || 
+        e.key === 'PageDown'
+      );
+      
+      if (isSelectionKey) {
+        console.log('Keyboard selection in progress');
+        isSelecting.current = true;
+        
+        // Hide popup while selecting
+        if (showPopup) {
+          setShowPopup(false);
+        }
+      }
     };
-    
+
     // Add event listeners
-    document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mouseup', handleDragEnd);
+    document.addEventListener('selectionchange', handleSelectionChange);
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
     
     return () => {
-      document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mouseup', handleDragEnd);
+      document.removeEventListener('selectionchange', handleSelectionChange);
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
       if (popupTimeoutRef.current) {
         clearTimeout(popupTimeoutRef.current);
+      }
+      if (selectionEndTimeout.current) {
+        clearTimeout(selectionEndTimeout.current);
       }
     };
   }, [showPopup]);
@@ -484,28 +637,29 @@ const Editor = () => {
               console.log('Selection update coords:', coords);
               setSelectionCoords(coords);
               
-              // We don't automatically show the popup here anymore
-              // This prevents the popup from appearing during selection dragging
-              // The popup will be shown by handleMouseUp or handleKeyUp after the selection is complete
+              // CRITICAL FIX: Don't show popup if user is still actively selecting text
+              // This prevents the popup from appearing prematurely during selection
+              if (isSelecting.current || isDragging.current) {
+                console.log('Selection update detected but user is still selecting, not showing popup');
+                return;
+              }
               
-              // However, we need to handle programmatic selections (like API-triggered ones)
-              // If this selection wasn't triggered by a mouse or keyboard event, show the popup
-              // We can detect this by checking if the selection was made within the last 300ms
+              // We need to handle both user-initiated and programmatic selections
+              // Check if this selection was made by a recent user interaction
               const now = Date.now();
               const lastInteractionTime = Math.max(
                 lastMouseUpTime.current || 0,
                 lastKeyUpTime.current || 0
               );
               
+              // Only show popup if:
+              // 1. This is a programmatic selection (not from recent mouse/keyboard)
+              // 2. OR if it's been more than 300ms since the last interaction (selection is stable)
+              // 3. AND the user is not actively selecting text
               if (now - lastInteractionTime > 300) {
-                console.log('Programmatic selection detected, showing popup');
-                // This is likely a programmatic selection, so show the popup
-                if (popupTimeoutRef.current) {
-                  clearTimeout(popupTimeoutRef.current);
-                }
-                popupTimeoutRef.current = setTimeout(() => {
-                  setShowPopup(true);
-                }, 100);
+                console.log('Programmatic or stable selection detected, scheduling popup');
+                // Use debounced function instead of direct timeout
+                debouncedShowPopup(true);
               }
             }
           }
@@ -513,6 +667,7 @@ const Editor = () => {
           console.error('Error getting selection coordinates:', error);
         }
       } else if (!showPopup) {
+        // Selection is collapsed (no text selected)
         // Only clear if popup is not shown (to prevent clearing when clicking in the popup)
         setSelectedText('');
         setSelectionCoords(null);
@@ -635,7 +790,7 @@ const Editor = () => {
     switch(model) {
       case 'gemini-2.0-pro-exp-02-05': return 'Pro';
       case 'gemini-2.0-flash': return 'Flash';
-      case 'gemini-2.0-flash-lite-preview-02-05': return 'Flash Lite';
+      case 'gemini-2.0-flash-lite': return 'Flash Lite';
       default: return model;
     }
   };
@@ -667,18 +822,50 @@ const Editor = () => {
       const selectedText = editor.state.doc.textBetween(from, to, ' ');
       setSelectedText(selectedText);
       
-      // Set coordinates based on editor position
-      const editorElement = editor.view.dom;
-      const editorRect = editorElement.getBoundingClientRect();
-      
-      // Position near the top of the editor as a fallback
-      const coords = {
-        x: editorRect.left + 50,
-        y: editorRect.top + 50
-      };
-      
-      console.log('Setting forced popup position:', coords);
-      setSelectionCoords(coords);
+      // Set coordinates based on selection position
+      try {
+        const domSelection = window.getSelection();
+        if (domSelection && domSelection.rangeCount > 0) {
+          const range = domSelection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          
+          if (rect && rect.width > 0 && rect.height > 0) {
+            const coords = {
+              x: rect.left + window.scrollX,
+              y: rect.bottom + window.scrollY
+            };
+            
+            console.log('Setting forced popup position from selection:', coords);
+            setSelectionCoords(coords);
+          } else {
+            // Fallback to editor position if selection rect is invalid
+            const editorElement = editor.view.dom;
+            const editorRect = editorElement.getBoundingClientRect();
+            
+            const coords = {
+              x: editorRect.left + 50,
+              y: editorRect.top + 50
+            };
+            
+            console.log('Setting forced popup position from editor:', coords);
+            setSelectionCoords(coords);
+          }
+        }
+      } catch (error) {
+        console.error('Error getting selection coordinates for forced popup:', error);
+        
+        // Fallback to editor position
+        const editorElement = editor.view.dom;
+        const editorRect = editorElement.getBoundingClientRect();
+        
+        const coords = {
+          x: editorRect.left + 50,
+          y: editorRect.top + 50
+        };
+        
+        console.log('Setting fallback forced popup position:', coords);
+        setSelectionCoords(coords);
+      }
       
       // Set selection range for persistent highlighting
       setSelectionRange({ from, to });
@@ -686,7 +873,9 @@ const Editor = () => {
       // Apply persistent highlight
       setPersistentHighlight(editor, { from, to });
       
-      // Show the popup immediately
+      // Force the popup to show immediately (bypass debounce)
+      // This is intentional for the keyboard shortcut
+      console.log('Force showing popup immediately (bypassing debounce)');
       setShowPopup(true);
     } else {
       console.warn('Cannot force popup - no text selected in editor');
@@ -738,61 +927,66 @@ const Editor = () => {
     return () => clearTimeout(initTimer);
   }, []); // Empty dependency array means this runs once on mount
 
+  // Add debug logging to the setShowPopup state change
+  useEffect(() => {
+    console.log('Popup visibility changed:', showPopup);
+  }, [showPopup]);
+
+  // Helper functions for exporting content
+  const exportContent = (format: 'text' | 'html' | 'markdown') => {
+    if (!editor) return;
+    
+    let content = '';
+    let filename = `ai-editor-export-${new Date().toISOString().slice(0,10)}`;
+    let mimeType = 'text/plain';
+    
+    switch (format) {
+      case 'text':
+        content = editor.getText();
+        filename += '.txt';
+        break;
+      case 'html':
+        content = editor.getHTML();
+        filename += '.html';
+        mimeType = 'text/html';
+        break;
+      case 'markdown':
+        // Basic HTML to Markdown conversion (simplified)
+        content = editor.getHTML()
+          .replace(/<h1>(.*?)<\/h1>/g, '# $1\n\n')
+          .replace(/<h2>(.*?)<\/h2>/g, '## $1\n\n')
+          .replace(/<h3>(.*?)<\/h3>/g, '### $1\n\n')
+          .replace(/<p>(.*?)<\/p>/g, '$1\n\n')
+          .replace(/<strong>(.*?)<\/strong>/g, '**$1**')
+          .replace(/<em>(.*?)<\/em>/g, '*$1*')
+          .replace(/<u>(.*?)<\/u>/g, '_$1_')
+          .replace(/<li>(.*?)<\/li>/g, '- $1\n')
+          .replace(/<blockquote>(.*?)<\/blockquote>/g, '> $1\n\n')
+          .replace(/<br\s*\/?>/g, '\n')
+          .replace(/<[^>]*>/g, ''); // Remove any remaining HTML tags
+        filename += '.md';
+        break;
+    }
+    
+    // Create the download
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    // Close the export menu after exporting
+    setExportMenuOpen(false);
+  };
+
   if (!editor) {
     return <div>Loading editor...</div>;
   }
   
-  // Helper functions for exporting content
-  // const exportContent = (format: 'text' | 'html' | 'markdown') => {
-  //   if (!editor) return;
-    
-  //   let content = '';
-  //   let filename = `ai-editor-export-${new Date().toISOString().slice(0,10)}`;
-  //   let mimeType = 'text/plain';
-    
-  //   switch (format) {
-  //     case 'text':
-  //       content = editor.getText();
-  //       filename += '.txt';
-  //       break;
-  //     case 'html':
-  //       content = editor.getHTML();
-  //       filename += '.html';
-  //       mimeType = 'text/html';
-  //       break;
-  //     case 'markdown':
-  //       // Basic HTML to Markdown conversion (simplified)
-  //       content = editor.getHTML()
-  //         .replace(/<h1>(.*?)<\/h1>/g, '# $1\n\n')
-  //         .replace(/<h2>(.*?)<\/h2>/g, '## $1\n\n')
-  //         .replace(/<h3>(.*?)<\/h3>/g, '### $1\n\n')
-  //         .replace(/<p>(.*?)<\/p>/g, '$1\n\n')
-  //         .replace(/<strong>(.*?)<\/strong>/g, '**$1**')
-  //         .replace(/<em>(.*?)<\/em>/g, '*$1*')
-  //         .replace(/<u>(.*?)<\/u>/g, '_$1_')
-  //         .replace(/<li>(.*?)<\/li>/g, '- $1\n')
-  //         .replace(/<blockquote>(.*?)<\/blockquote>/g, '> $1\n\n')
-  //         .replace(/<br\s*\/?>/g, '\n')
-  //         .replace(/<[^>]*>/g, ''); // Remove any remaining HTML tags
-  //       filename += '.md';
-  //       break;
-  //   }
-    
-  //   // Create the download
-  //   const blob = new Blob([content], { type: mimeType });
-  //   const url = URL.createObjectURL(blob);
-  //   const a = document.createElement('a');
-  //   a.href = url;
-  //   a.download = filename;
-  //   document.body.appendChild(a);
-  //   a.click();
-  //   document.body.removeChild(a);
-  //   URL.revokeObjectURL(url);
-    
-  //   // Close the export menu after exporting
-  //   // setExportMenuOpen(false);
-  // };
-
   return (
     <div className="text-editor w-full max-w-4xl mx-auto rounded-xl overflow-hidden shadow-xl border border-gray-100 bg-white">
       <div className="border-b border-gray-100 px-6 py-4 bg-gradient-to-r from-indigo-50 to-blue-50 flex justify-between items-center">
@@ -825,14 +1019,52 @@ const Editor = () => {
             <div className="h-5 border-r"></div>
             
             <button 
-              onClick={() => handleModelChange('gemini-2.0-flash-lite-preview-02-05')}
-              className={`px-3 py-1 text-sm ${activeModel === 'gemini-2.0-flash-lite-preview-02-05' 
+              onClick={() => handleModelChange('gemini-2.0-flash-lite')}
+              className={`px-3 py-1 text-sm ${activeModel === 'gemini-2.0-flash-lite' 
                 ? 'bg-indigo-100 text-indigo-700 font-medium' 
                 : 'bg-white hover:bg-gray-50'}`}
               title="Fastest, lower quality"
             >
               Flash Lite
             </button>
+          </div>
+          
+          {/* Export dropdown */}
+          <div className="relative" ref={exportMenuRef}>
+            <button 
+              onClick={() => setExportMenuOpen(!exportMenuOpen)}
+              className="px-3 py-1 bg-white border border-gray-200 text-gray-700 rounded-md hover:bg-gray-50 flex items-center text-sm shadow-sm"
+            >
+              <span className="mr-1">Export</span>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+            </button>
+            
+            {exportMenuOpen && (
+              <div className="absolute right-0 mt-1 w-40 bg-white rounded-md shadow-lg border border-gray-200 z-10">
+                <div className="py-1">
+                  <button 
+                    onClick={() => exportContent('text')}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Plain Text (.txt)
+                  </button>
+                  <button 
+                    onClick={() => exportContent('html')}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    HTML (.html)
+                  </button>
+                  <button 
+                    onClick={() => exportContent('markdown')}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Markdown (.md)
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           
           <button 

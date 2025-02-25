@@ -9,7 +9,7 @@ export type AIAction = 'expand' | 'summarize' | 'rephrase' | 'revise';
 export type GeminiModel = 
   | 'gemini-2.0-pro-exp-02-05'  // The Pro version
   | 'gemini-2.0-flash'         // The Flash version
-  | 'gemini-2.0-flash-lite-preview-02-05';  // The Flash Lite version
+  | 'gemini-2.0-flash-lite';  // The Flash Lite version
 
 // Default model to use
 export const DEFAULT_MODEL: GeminiModel = 'gemini-2.0-flash';
