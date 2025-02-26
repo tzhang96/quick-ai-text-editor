@@ -55,118 +55,34 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     const popup = popupRef.current;
     if (!popup || !isVisible) return;
 
-    console.log('Positioning popup, raw position:', position);
-
-    try {
-      // Start with the initial position
-      let finalX = position.x || 0; // Fallback to 0 if undefined
-      let finalY = position.y || 0; // Fallback to 0 if undefined
-
-      // Get popup dimensions
-      const rect = popup.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      
-      // Fallback positioning if we don't have valid coordinates
-      if (!position.x && !position.y) {
-        console.warn('Invalid position coordinates, using fallback positioning');
-        // Try to position near the editor
-        const editorElement = document.querySelector('.ProseMirror');
-        if (editorElement) {
-          const editorRect = editorElement.getBoundingClientRect();
-          finalX = editorRect.left + 50;
-          finalY = editorRect.top + 50;
-        } else {
-          // Centered fallback if editor not found
-          finalX = viewportWidth / 2 - rect.width / 2;
-          finalY = viewportHeight / 3; // Position in top third
-        }
-      }
-      
-      // Check selection element position in editor
-      const selection = window.getSelection();
-      const editorElement = document.querySelector('.ProseMirror');
-      const editorRect = editorElement?.getBoundingClientRect();
-      
-      if (selection && selection.rangeCount > 0 && editorRect) {
-        try {
-          const range = selection.getRangeAt(0);
-          const selectionRect = range.getBoundingClientRect();
-          
-          console.log('Selection rect:', {
-            top: selectionRect.top,
-            bottom: selectionRect.bottom,
-            left: selectionRect.left,
-            right: selectionRect.right,
-            width: selectionRect.width,
-            height: selectionRect.height
-          });
-          
-          // Only use selection rect if it seems valid
-          if (selectionRect.width > 0 && selectionRect.height > 0) {
-            // Determine if we have more space above or below the selection
-            const spaceAbove = selectionRect.top - editorRect.top;
-            const spaceBelow = editorRect.bottom - selectionRect.bottom;
-            
-            // Position based on available space
-            if (spaceBelow >= rect.height + 20) {
-              // Default: Position below selection with enough space
-              finalY = selectionRect.bottom + 10;
-              finalX = selectionRect.left + (selectionRect.width / 2) - (rect.width / 2);
-            } else if (spaceAbove >= rect.height + 20) {
-              // Position above selection if more space available
-              finalY = selectionRect.top - rect.height - 10;
-              finalX = selectionRect.left + (selectionRect.width / 2) - (rect.width / 2);
-            } else {
-              // Position to the side if neither above nor below has enough space
-              finalY = Math.min(
-                Math.max(editorRect.top + 10, selectionRect.top), 
-                editorRect.bottom - rect.height - 10
-              );
-              
-              // Prefer right side positioning if possible
-              if (selectionRect.right + rect.width + 20 < viewportWidth) {
-                finalX = selectionRect.right + 20;
-              } else if (selectionRect.left - rect.width - 20 > 0) {
-                finalX = selectionRect.left - rect.width - 20;
-              } else {
-                // Center horizontally if side positioning doesn't work
-                finalX = viewportWidth / 2 - rect.width / 2;
-              }
-            }
-          } else {
-            console.warn('Invalid selection rectangle, using original position');
-          }
-        } catch (error) {
-          console.error('Error calculating position from selection:', error);
-        }
-      } else {
-        console.log('Unable to find selection or editor element, using default position');
-      }
-
-      // Final boundary checks to ensure popup stays within viewport
-      if (finalX + rect.width > viewportWidth) {
-        finalX = viewportWidth - rect.width - 10;
-      }
-      if (finalX < 10) {
-        finalX = 10;
-      }
-      if (finalY + rect.height > viewportHeight) {
-        finalY = viewportHeight - rect.height - 10;
-      }
-      if (finalY < 10) {
-        finalY = 10;
-      }
-
-      // Apply position with added z-index to ensure it's on top
-      console.log('Final popup position:', { finalX, finalY });
-      popup.style.transform = `translate(${finalX}px, ${finalY}px)`;
-      popup.style.zIndex = '9999'; // Ensure high z-index
-    } catch (error) {
-      console.error('Error positioning popup:', error);
-      // Apply emergency fallback position
-      popup.style.transform = 'translate(10px, 10px)';
+    // Get popup dimensions
+    const rect = popup.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    // Get current position from the inline styles
+    let currentX = position.x - (position.x > window.innerWidth / 2 ? 260 : 0);
+    let currentY = position.y + 6;
+    
+    // Simple boundary checking to keep popup within viewport
+    if (currentX + rect.width > viewportWidth) {
+      popup.style.left = `${viewportWidth - rect.width - 10}px`;
     }
+    
+    if (currentX < 10) {
+      popup.style.left = '10px';
+    }
+    
+    if (currentY + rect.height > viewportHeight) {
+      popup.style.top = `${viewportHeight - rect.height - 10}px`;
+    }
+    
+    if (currentY < 10) {
+      popup.style.top = '10px';
+    }
+    
+    // Ensure high z-index
+    popup.style.zIndex = '9999';
   }, [position, isVisible]);
 
   const handleAIAction = async (action: AIAction) => {
@@ -228,7 +144,8 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
         
         // Log to action history for the UI
         if (onActionPerformed) {
-          onActionPerformed(action, additionalInstructions, modelName);
+          console.log('Adding to action history in UI:', action, additionalInstructions, modelName);
+          onActionPerformed(action, additionalInstructions || '', modelName);
         }
       } else {
         console.error('Transformation failed: Empty result');
@@ -277,35 +194,88 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     }
   };
 
+  // Prevent mousedown events from bubbling up when clicking inside the popup
+  // This helps prevent the popup from closing when clicking inside input fields
+  const handlePopupMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // More aggressive prevention of event propagation
+    if (e.nativeEvent) {
+      e.nativeEvent.stopImmediatePropagation?.();
+      e.nativeEvent.stopPropagation?.();
+      e.nativeEvent.preventDefault?.();
+    }
+    console.log('Popup mousedown intercepted and stopped');
+  };
+
+  // Prevent all events from bubbling up from the popup
+  const handlePopupEvent = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    // More aggressive prevention of event propagation
+    if (e.nativeEvent) {
+      e.nativeEvent.stopImmediatePropagation?.();
+      e.nativeEvent.stopPropagation?.();
+      e.nativeEvent.preventDefault?.();
+    }
+    console.log('Popup event intercepted and stopped');
+  };
+
+  // Handle input field focus and interaction
+  const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    // Remove preventDefault to allow focus
+    if (e.nativeEvent) {
+      e.nativeEvent.stopImmediatePropagation?.();
+      e.nativeEvent.stopPropagation?.();
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    // Remove preventDefault to allow input changes
+    if (e.nativeEvent) {
+      e.nativeEvent.stopImmediatePropagation?.();
+      e.nativeEvent.stopPropagation?.();
+    }
+    setAdditionalInstructions(e.target.value);
+  };
+
+  const handleInputClick = (e: React.MouseEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    // Remove preventDefault to allow clicking
+    if (e.nativeEvent) {
+      e.nativeEvent.stopImmediatePropagation?.();
+      e.nativeEvent.stopPropagation?.();
+    }
+  };
+
+  if (!isVisible) return null;
+  
   return (
-    <div
-      ref={popupRef}
-      className={`fixed top-0 left-0 z-50 ${isVisible ? 'opacity-100' : 'opacity-0'} ${className}`}
-      style={{ 
-        transform: `translate(${position.x}px, ${position.y}px)`,
-        transformOrigin: 'top center',
-        transition: 'opacity 50ms ease', // Only fade opacity, no movement animation
-        pointerEvents: isVisible ? 'auto' : 'none', // Only enable pointer events when visible
-        visibility: isVisible ? 'visible' : 'hidden' // Hide completely when not visible
+    <div 
+      className={`${className} text-selection-popup p-2 rounded-lg shadow-lg min-w-[260px] max-w-[320px]`}
+      style={{
+        position: 'absolute',
+        left: `${position.x - (position.x > window.innerWidth / 2 ? 260 : 0)}px`,
+        top: `${position.y + 6}px`,
+        pointerEvents: 'auto'
       }}
+      onMouseDown={handlePopupMouseDown}
+      onClick={handlePopupEvent}
+      onMouseUp={handlePopupEvent}
+      onMouseMove={handlePopupEvent}
+      ref={popupRef}
     >
       <div 
         className="bg-white shadow-lg rounded-lg border border-gray-200 overflow-hidden w-64"
         style={{ pointerEvents: 'auto' }} // Re-enable pointer events for the content
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault(); // Prevent any default behavior
-        }}
-        onMouseDown={(e) => {
-          e.stopPropagation();
-          e.preventDefault(); // Prevent any default behavior
-        }}
       >
         <div className="p-3 space-y-3">
           <div className="flex flex-wrap gap-1.5">
             <button
               onClick={(e) => {
-                e.stopPropagation();
+                handlePopupEvent(e);
                 handleAIAction('expand');
               }}
               className="bg-indigo-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-600 shadow-sm transition-colors"
@@ -315,7 +285,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
             </button>
             <button
               onClick={(e) => {
-                e.stopPropagation();
+                handlePopupEvent(e);
                 handleAIAction('summarize');
               }}
               className="bg-green-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-green-600 shadow-sm transition-colors"
@@ -325,7 +295,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
             </button>
             <button
               onClick={(e) => {
-                e.stopPropagation();
+                handlePopupEvent(e);
                 handleAIAction('rephrase');
               }}
               className="bg-yellow-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-yellow-600 shadow-sm transition-colors"
@@ -335,7 +305,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
             </button>
             <button
               onClick={(e) => {
-                e.stopPropagation();
+                handlePopupEvent(e);
                 handleAIAction('revise');
               }}
               className="bg-purple-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-purple-600 shadow-sm transition-colors"
@@ -347,7 +317,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
             {actionHistory.length > 0 && (
               <button
                 onClick={(e) => {
-                  e.stopPropagation();
+                  handlePopupEvent(e);
                   setShowHistory(!showHistory);
                 }}
                 className="bg-gray-100 text-gray-700 px-2 py-1.5 rounded-md text-sm hover:bg-gray-200 shadow-sm border border-gray-200 transition-colors"
@@ -368,7 +338,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
                 <button
                   key={index}
                   onClick={(e) => {
-                    e.stopPropagation();
+                    handlePopupEvent(e);
                     applyHistoricalAction(item);
                   }}
                   className={`w-full text-left mb-1.5 p-1.5 rounded-md text-xs ${getActionColor(item.action)} text-white flex justify-between items-center shadow-sm`}
@@ -384,26 +354,25 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
             </div>
           )}
           
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Additional instructions (optional)"
-              value={additionalInstructions}
-              onChange={(e) => {
-                e.stopPropagation();
-                setAdditionalInstructions(e.target.value);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              className="w-full border rounded-md p-2 text-sm focus:ring-1 focus:ring-indigo-300 focus:border-indigo-300 shadow-sm"
-              disabled={isLoading}
-            />
-            {isLoading && (
-              <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-md backdrop-blur-[1px]">
-                <div className="h-5 w-5 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin"></div>
-              </div>
-            )}
-          </div>
+          <input
+            type="text"
+            placeholder="Additional instructions (optional)"
+            value={additionalInstructions}
+            onChange={handleInputChange}
+            onFocus={handleInputFocus}
+            onClick={handleInputClick}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              // Don't prevent default to allow focus
+              if (e.nativeEvent) {
+                e.nativeEvent.stopImmediatePropagation?.();
+                e.nativeEvent.stopPropagation?.();
+              }
+              console.log('Input field mousedown intercepted');
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+            disabled={isLoading}
+          />
         </div>
       </div>
     </div>

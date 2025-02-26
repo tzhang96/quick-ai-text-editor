@@ -125,6 +125,9 @@ export const logEditHistory = async (
     // Handle string actions (like manual edits)
     if (action.startsWith('manual_')) {
       formattedAction = `MANUAL_${action.substring(7).toUpperCase()}`;
+    } else if (action === '') {
+      // Skip empty actions (used for signaling popup close)
+      return;
     } else {
       formattedAction = `AI_${action.toUpperCase()}`;
     }
@@ -156,7 +159,7 @@ export const logEditHistory = async (
     originalText,
     newText,
     additionalInstructions,
-    modelName // Add the model name to the edit log
+    modelName: modelName || DEFAULT_MODEL // Ensure we always have a model name
   };
   
   // Log to console for debugging
@@ -166,8 +169,12 @@ export const logEditHistory = async (
     // Always store in localStorage for client-side history viewing
     const history = localStorage.getItem('editHistory');
     const editHistory = history ? JSON.parse(history) : [];
-    editHistory.push(editLog);
-    localStorage.setItem('editHistory', JSON.stringify(editHistory));
+    editHistory.unshift(editLog); // Add to beginning for newest-first order
+    
+    // Limit history to most recent 100 entries to prevent localStorage from getting too large
+    const limitedHistory = editHistory.slice(0, 100);
+    localStorage.setItem('editHistory', JSON.stringify(limitedHistory));
+    console.log('Edit history saved to localStorage, entries:', limitedHistory.length);
     
     // Also save to file API in development (not in production)
     if (window.location.hostname === 'localhost' || 
@@ -183,9 +190,9 @@ export const logEditHistory = async (
             timestamp,
             originalText,
             newText,
-            action,
+            action: formattedAction, // Use formatted action
             additionalInstructions,
-            modelName // Add the model to the API call
+            modelName: modelName || DEFAULT_MODEL
           }),
         });
         
@@ -198,9 +205,6 @@ export const logEditHistory = async (
       }
     }
   } catch (error) {
-    // Don't fail the entire operation if history logging fails
-    console.error('Error logging edit:', error);
+    console.error('Error saving edit history:', error);
   }
-  
-  return editLog;
 }; 
