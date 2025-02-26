@@ -12,11 +12,10 @@ import { getSelectionRect } from '../../../utils/selectionUtils';
 import { getSelectedText } from '../../../utils/selectionUtils';
 import { clearAllHighlights, highlightSelection } from '../../../utils/highlightUtils';
 import ExportMenu from '../ui/ExportMenu';
-import ModelSelector from '../ui/ModelSelector';
 import TextSelectionPopup from '../../../components/TextSelectionPopup';
 import EditHistoryViewer from '../../../components/EditHistoryViewer';
 import EditorMenuBar from '../../../components/EditorMenuBar';
-import { DEFAULT_MODEL, logEditHistory, GeminiModel, AIAction } from '../../../services/geminiService';
+import { DEFAULT_MODEL, GeminiModel, AIAction } from '../../../services/geminiService';
 
 const EditorContainer: React.FC = () => {
   // Initialize editor
@@ -37,7 +36,7 @@ const EditorContainer: React.FC = () => {
     }
   });
   const { showExportMenu, toggleExportMenu, closeExportMenu, exportAsHTML, exportAsMarkdown, exportAsText } = useExportMenu({ editor });
-  const { selectedModel, showModelSelector, toggleModelSelector, closeModelSelector, handleModelSelect: originalHandleModelSelect } = useModelSelection(DEFAULT_MODEL);
+  const { selectedModel, showModelSelector, closeModelSelector, handleModelSelect: originalHandleModelSelect } = useModelSelection(DEFAULT_MODEL);
   
   // Handle AI action performed
   const handleActionPerformed = useCallback((action: AIAction, instructions: string, modelName: GeminiModel) => {

@@ -49,14 +49,10 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
         return;
       }
       
-      // If we get here, we're not interacting with the popup, so we can close it
-      // and clear the highlights
+      // If we get here, we're not interacting with the popup, so we can close it immediately
       console.log('No valid selection and no popup interaction - clearing highlights');
-      const currentPopupTimeout = setTimeout(() => {
-        onShowPopup(false);
-        clearAllHighlights(editor);
-      }, 300);
-      popupTimeoutRef.current = currentPopupTimeout;
+      onShowPopup(false);
+      clearAllHighlights(editor);
       return;
     }
     
@@ -66,9 +62,8 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
     if (shouldShowPopup) {
       console.log('Valid selection detected, showing popup');
       
-      // The key improvement: Only show popup after selection has "settled"
-      // This prevents flickering during active selection
-      if (isSelecting.current || isDragging.current) {
+      // Only check for active selection to prevent flicker
+      if (isSelecting.current) {
         console.log('Still selecting - not showing popup yet');
         return;
       }
@@ -80,36 +75,29 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
         return;
       }
       
-      // Show popup with a small delay to ensure selection is stable
-      const currentSelectionEndTimeout = setTimeout(() => {
-        onShowPopup(true);
-      }, 100);
-      selectionEndTimeout.current = currentSelectionEndTimeout;
+      // Show popup immediately
+      onShowPopup(true);
     } else {
       onShowPopup(false);
       clearAllHighlights(editor);
     }
   }, [editor, onShowPopup]);
   
-  // Handle selection change
-  const handleSelectionChange = useCallback(() => {
+  // Handle selection change - explicitly type as a function that takes no arguments
+  const handleSelectionChange: () => void = useCallback(() => {
     if (!editor) return;
     
-    // If we're actively selecting or dragging, don't check yet
-    if (isSelecting.current || isDragging.current) {
-      console.log('Active selection/drag in progress, deferring popup check');
+    // If actively selecting, wait a tiny bit
+    if (isSelecting.current) {
+      console.log('Active selection in progress, minimal delay');
+      selectionCheckTimer.current = setTimeout(() => {
+        checkSelectionForPopup();
+      }, 20); // Minimal delay to let selection complete
       return;
     }
     
-    // Clear any pending timer
-    if (selectionCheckTimer.current) {
-      clearTimeout(selectionCheckTimer.current);
-    }
-    
-    // Set a new timer to check selection after a short delay
-    selectionCheckTimer.current = setTimeout(() => {
-      checkSelectionForPopup();
-    }, 150); // Increased delay for better stability
+    // If not actively selecting, check immediately
+    checkSelectionForPopup();
   }, [editor, checkSelectionForPopup]);
   
   // Handle mouse down event - only used to track the start of selection
@@ -154,21 +142,15 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
     // Check if clicking on highlighted text
     const highlightElement = target.closest('.highlight-yellow');
     if (highlightElement) {
-      // Don't clear the selection and highlight immediately
-      // This allows the popup to remain visible when clicking on highlighted text
+      // Don't clear the selection and highlight
       e.stopPropagation();
-      
-      // Set a timeout to allow the browser to process the click
-      setTimeout(() => {
-        isSelecting.current = false;
-      }, 50);
-      
+      isSelecting.current = false;
       return;
     }
   }, [editor]);
   
   // Handle mouse up event
-  const handleMouseUp = useCallback((e: React.MouseEvent | MouseEvent) => {
+  const handleMouseUp = useCallback(() => {
     if (!editor) return;
     
     lastMouseUpTime.current = Date.now();
@@ -177,15 +159,19 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
     // Mark selection as completed
     isSelecting.current = false;
     
-    // Use a timeout to ensure selection is stable before checking
-    setTimeout(() => {
-      checkSelectionForPopup();
-    }, 150); // Increased delay for better stability
+    // Check selection immediately on mouse up
+    checkSelectionForPopup();
   }, [editor, checkSelectionForPopup]);
   
   // Handle drag start event
-  const handleDragStart = useCallback((e: React.DragEvent | DragEvent) => {
+  const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement> | DragEvent): void => {
     if (!editor) return;
+    
+    // Stop event propagation if we have an event
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     
     isDragging.current = true;
     console.log('Drag started');
@@ -195,47 +181,58 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
   }, [editor, onShowPopup]);
   
   // Handle drag end event
-  const handleDragEnd = useCallback((e: React.DragEvent | DragEvent) => {
+  const handleDragEnd = useCallback((e: React.DragEvent<HTMLDivElement> | DragEvent): void => {
     if (!editor) return;
+    
+    // Stop event propagation if we have an event
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     
     lastMouseUpTime.current = Date.now();
     isDragging.current = false;
     console.log('Drag ended');
     
-    // Use a timeout to ensure selection is stable
+    // Minimal delay after drag to ensure selection is stable
     setTimeout(() => {
       checkSelectionForPopup();
-    }, 200); // Longer delay after drag operations
+    }, 30); // Minimal delay after drag operations
   }, [editor, checkSelectionForPopup]);
   
   // Subscribe to document selection changes
   useEffect(() => {
-    const onSelectionChange = () => {
+    const onSelectionChange = (): void => {
       // Skip if we're in the middle of selecting
       if (isSelecting.current || isDragging.current) {
         console.log('Selection changing - waiting to complete');
         return;
       }
       
-      // Skip if the last mouse up was very recent
+      // Minimal delay between mouse up and selection check
       const timeSinceMouseUp = Date.now() - lastMouseUpTime.current;
-      if (timeSinceMouseUp < 100) {
-        console.log('Recent mouse up, waiting for selection to settle');
+      if (timeSinceMouseUp < 20) { // Minimal delay
+        console.log('Very recent mouse up, tiny wait');
         return;
       }
       
-      // Check the selection
+      // Call handleSelectionChange without passing any arguments
       handleSelectionChange();
     };
     
     // Add document-level event listeners
-    const handleDocumentMouseUp = (e: MouseEvent) => {
-      handleMouseUp(e);
+    const handleDocumentMouseUp = () => {
+      handleMouseUp();
     };
     
     const handleDocumentDragEnd = (e: DragEvent) => {
       handleDragEnd(e);
     };
+    
+    // Store refs to timers that need to be cleaned up
+    const currentSelectionEndTimeout = selectionEndTimeout.current;
+    const currentPopupTimeout = popupTimeoutRef.current;
+    const currentSelectionCheckTimer = selectionCheckTimer.current;
     
     document.addEventListener('selectionchange', onSelectionChange);
     document.addEventListener('mouseup', handleDocumentMouseUp);
@@ -246,15 +243,15 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
       document.removeEventListener('mouseup', handleDocumentMouseUp);
       document.removeEventListener('dragend', handleDocumentDragEnd);
       
-      // Clean up any pending timers
-      if (selectionCheckTimer.current) {
-        clearTimeout(selectionCheckTimer.current);
+      // Clean up any pending timers using the stored refs
+      if (currentSelectionCheckTimer) {
+        clearTimeout(currentSelectionCheckTimer);
       }
-      if (selectionEndTimeout.current) {
-        clearTimeout(selectionEndTimeout.current);
+      if (currentSelectionEndTimeout) {
+        clearTimeout(currentSelectionEndTimeout);
       }
-      if (popupTimeoutRef.current) {
-        clearTimeout(popupTimeoutRef.current);
+      if (currentPopupTimeout) {
+        clearTimeout(currentPopupTimeout);
       }
     };
   }, [handleSelectionChange, handleMouseUp, handleDragEnd]);

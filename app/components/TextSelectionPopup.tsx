@@ -61,8 +61,8 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     const viewportHeight = window.innerHeight;
     
     // Get current position from the inline styles
-    let currentX = position.x - (position.x > window.innerWidth / 2 ? 260 : 0);
-    let currentY = position.y + 6;
+    const currentX = position.x - (position.x > window.innerWidth / 2 ? 260 : 0);
+    const currentY = position.y + 6;
     
     // Simple boundary checking to keep popup within viewport
     if (currentX + rect.width > viewportWidth) {

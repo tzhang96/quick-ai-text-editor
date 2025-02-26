@@ -245,29 +245,29 @@ const Editor = () => {
   }, [isSelecting, isDragging]);
 
   // Effect to handle selection changes
+  const handleSelectionChange = useCallback((): void => {
+    if (isDragging.current || isSelecting.current) {
+      return;
+    }
+
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+      // Clear the popup after a delay to allow for interactions with the popup
+      const currentPopupTimeout = setTimeout(() => {
+        setShowPopup(false);
+      }, 300);
+      popupTimeoutRef.current = currentPopupTimeout;
+      return;
+    }
+
+    // Set a timeout to consider the selection as "ended" after a short delay
+    const currentSelectionEndTimeout = setTimeout(() => {
+      debouncedShowPopup(true);
+    }, 500);
+    selectionEndTimeout.current = currentSelectionEndTimeout;
+  }, []);
+
   useEffect(() => {
-    const handleSelectionChange = () => {
-      if (isDragging.current || isSelecting.current) {
-        return;
-      }
-
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) {
-        // Clear the popup after a delay to allow for interactions with the popup
-        const currentPopupTimeout = setTimeout(() => {
-          setShowPopup(false);
-        }, 300);
-        popupTimeoutRef.current = currentPopupTimeout;
-        return;
-      }
-
-      // Set a timeout to consider the selection as "ended" after a short delay
-      const currentSelectionEndTimeout = setTimeout(() => {
-        debouncedShowPopup(true);
-      }, 500);
-      selectionEndTimeout.current = currentSelectionEndTimeout;
-    };
-
     document.addEventListener('selectionchange', handleSelectionChange);
 
     return () => {
@@ -284,7 +284,7 @@ const Editor = () => {
         clearTimeout(currentSelectionEndTimeout);
       }
     };
-  }, [debouncedShowPopup, selectionRange]);
+  }, [handleSelectionChange, selectionRange]);
 
   // Function to add an action to history
   const addToActionHistory = (action: AIAction, instructions: string, modelName: GeminiModel) => {
