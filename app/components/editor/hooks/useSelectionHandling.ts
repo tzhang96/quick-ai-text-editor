@@ -12,10 +12,12 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
   const [selectionRange, setSelectionRange] = useState<{ from: number; to: number } | null>(null);
   const isSelecting = useRef(false);
   const isDragging = useRef(false);
+  const lastTouchEnd = useRef(0);
   const lastMouseUpTime = useRef(0);
   const selectionCheckTimer = useRef<NodeJS.Timeout | null>(null);
   const selectionEndTimeout = useRef<NodeJS.Timeout | null>(null);
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   
   // Create a function to check if selection should show popup
   const checkSelectionForPopup = useCallback(() => {
@@ -39,18 +41,14 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
       const popupElement = document.querySelector('.text-selection-popup');
       
       if (popupElement && activeElement && popupElement.contains(activeElement)) {
-        console.log('Input field interaction detected - keeping popup open');
         return;
       }
       
-      // Check if we're clicking inside the popup (not just the input)
+      // Check if we're clicking inside the popup
       if (popupElement && popupElement.contains(document.activeElement)) {
-        console.log('Popup interaction detected - keeping popup open');
         return;
       }
       
-      // If we get here, we're not interacting with the popup, so we can close it immediately
-      console.log('No valid selection and no popup interaction - clearing highlights');
       onShowPopup(false);
       clearAllHighlights(editor);
       return;
@@ -60,22 +58,17 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
     const shouldShowPopup = isValidSelectionForPopup(editor);
     
     if (shouldShowPopup) {
-      console.log('Valid selection detected, showing popup');
-      
       // Only check for active selection to prevent flicker
       if (isSelecting.current) {
-        console.log('Still selecting - not showing popup yet');
         return;
       }
       
       // Get selection coordinates
       const rect = getSelectionRect();
       if (!rect || rect.width === 0 || rect.height === 0) {
-        console.log('Invalid selection rectangle, not showing popup');
         return;
       }
       
-      // Show popup immediately
       onShowPopup(true);
     } else {
       onShowPopup(false);
@@ -83,49 +76,66 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
     }
   }, [editor, onShowPopup]);
   
-  // Handle selection change - explicitly type as a function that takes no arguments
-  const handleSelectionChange: () => void = useCallback(() => {
+  // Handle touch start
+  const handleTouchStart = useCallback((e: Event) => {
     if (!editor) return;
     
-    // If actively selecting, wait a tiny bit
-    if (isSelecting.current) {
-      console.log('Active selection in progress, minimal delay');
-      selectionCheckTimer.current = setTimeout(() => {
-        checkSelectionForPopup();
-      }, 20); // Minimal delay to let selection complete
-      return;
-    }
+    const touchEvent = e as TouchEvent;
+    isSelecting.current = true;
+    touchStartPos.current = {
+      x: touchEvent.touches[0].clientX,
+      y: touchEvent.touches[0].clientY
+    };
+  }, [editor]);
+  
+  // Handle touch end
+  const handleTouchEnd = useCallback((e: Event) => {
+    if (!editor) return;
     
-    // If not actively selecting, check immediately
-    checkSelectionForPopup();
+    const now = Date.now();
+    lastTouchEnd.current = now;
+    isSelecting.current = false;
+    
+    // Add a small delay to allow the selection to settle
+    setTimeout(() => {
+      if (Date.now() - now < 300) return; // Ignore if another touch end happened
+      checkSelectionForPopup();
+    }, 300);
   }, [editor, checkSelectionForPopup]);
   
-  // Handle mouse down event - only used to track the start of selection
+  // Handle touch move
+  const handleTouchMove = useCallback((e: Event) => {
+    if (!editor || !touchStartPos.current) return;
+    
+    const touchEvent = e as TouchEvent;
+    const touch = touchEvent.touches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartPos.current.x);
+    const deltaY = Math.abs(touch.clientY - touchStartPos.current.y);
+    
+    // If the user has moved their finger more than a small threshold,
+    // consider it a selection attempt rather than a tap
+    if (deltaX > 10 || deltaY > 10) {
+      isSelecting.current = true;
+    }
+  }, [editor]);
+  
+  // Handle mouse down
   const handleMouseDown = useCallback((e: React.MouseEvent | MouseEvent) => {
     if (!editor) return;
     
-    // Check if clicking inside popup - if so, don't start selection
     const popupElement = document.querySelector('.text-selection-popup');
     if (popupElement && popupElement.contains(e.target as Node)) {
-      // Don't start selection when clicking in popup
-      console.log('Clicked inside popup - not starting selection');
       e.stopPropagation();
       
-      // Check if clicking on an input field
       const target = e.target as HTMLElement;
       if (target.tagName.toLowerCase() === 'input') {
-        console.log('Clicked on input field - allowing default behavior');
-        // Let the input field handle the click, but prevent selection
-        isSelecting.current = false;
         return;
       }
       
-      // Prevent any default behavior for non-input elements
       if ('preventDefault' in e) {
         e.preventDefault();
       }
       
-      // Prevent the event from bubbling up
       if (e instanceof MouseEvent && e.stopImmediatePropagation) {
         e.stopImmediatePropagation();
       }
@@ -134,148 +144,76 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
     }
     
     isSelecting.current = true;
-    console.log('Mouse down - selection started');
-    
-    // Get the target from the event
-    const target = e.target as HTMLElement;
-    
-    // Check if clicking on highlighted text
-    const highlightElement = target.closest('.highlight-yellow');
-    if (highlightElement) {
-      // Don't clear the selection and highlight
-      e.stopPropagation();
-      isSelecting.current = false;
-      return;
-    }
   }, [editor]);
   
-  // Handle mouse up event
+  // Handle mouse up
   const handleMouseUp = useCallback(() => {
     if (!editor) return;
     
     lastMouseUpTime.current = Date.now();
-    console.log('Mouse up - selection ended');
-    
-    // Mark selection as completed
     isSelecting.current = false;
-    
-    // Check selection immediately on mouse up
     checkSelectionForPopup();
   }, [editor, checkSelectionForPopup]);
   
-  // Handle drag start event
-  const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement> | DragEvent): void => {
+  // Handle selection change
+  const handleSelectionChange = useCallback(() => {
     if (!editor) return;
     
-    // Stop event propagation if we have an event
+    // If actively selecting, wait a tiny bit
+    if (isSelecting.current) {
+      selectionCheckTimer.current = setTimeout(() => {
+        checkSelectionForPopup();
+      }, 20);
+      return;
+    }
+    
+    // If not actively selecting, check immediately
+    checkSelectionForPopup();
+  }, [editor, checkSelectionForPopup]);
+  
+  // Handle drag events
+  const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement> | DragEvent) => {
+    if (!editor) return;
+    
     if (e) {
       e.stopPropagation();
       e.preventDefault();
     }
     
     isDragging.current = true;
-    console.log('Drag started');
-    
-    // Hide popup during drag operations
     onShowPopup(false);
   }, [editor, onShowPopup]);
   
-  // Handle drag end event
-  const handleDragEnd = useCallback((e: React.DragEvent<HTMLDivElement> | DragEvent): void => {
+  const handleDragEnd = useCallback((e: React.DragEvent<HTMLDivElement> | DragEvent) => {
     if (!editor) return;
     
-    // Stop event propagation if we have an event
     if (e) {
       e.stopPropagation();
       e.preventDefault();
     }
     
-    lastMouseUpTime.current = Date.now();
     isDragging.current = false;
-    console.log('Drag ended');
-    
-    // Minimal delay after drag to ensure selection is stable
     setTimeout(() => {
       checkSelectionForPopup();
-    }, 30); // Minimal delay after drag operations
+    }, 30);
   }, [editor, checkSelectionForPopup]);
   
-  // Subscribe to document selection changes
+  // Set up event listeners
   useEffect(() => {
-    const onSelectionChange = (): void => {
-      // Skip if we're in the middle of selecting
-      if (isSelecting.current || isDragging.current) {
-        console.log('Selection changing - waiting to complete');
-        return;
-      }
-      
-      // Minimal delay between mouse up and selection check
-      const timeSinceMouseUp = Date.now() - lastMouseUpTime.current;
-      if (timeSinceMouseUp < 20) { // Minimal delay
-        console.log('Very recent mouse up, tiny wait');
-        return;
-      }
-      
-      // Call handleSelectionChange without passing any arguments
-      handleSelectionChange();
-    };
+    const editorElement = document.querySelector('.ProseMirror');
+    if (!editorElement) return;
     
-    // Add document-level event listeners
-    const handleDocumentMouseUp = () => {
-      handleMouseUp();
-    };
-    
-    const handleDocumentDragEnd = (e: DragEvent) => {
-      handleDragEnd(e);
-    };
-    
-    // Store refs to timers that need to be cleaned up
-    const currentSelectionEndTimeout = selectionEndTimeout.current;
-    const currentPopupTimeout = popupTimeoutRef.current;
-    const currentSelectionCheckTimer = selectionCheckTimer.current;
-    
-    document.addEventListener('selectionchange', onSelectionChange);
-    document.addEventListener('mouseup', handleDocumentMouseUp);
-    document.addEventListener('dragend', handleDocumentDragEnd);
+    // Add touch event listeners
+    editorElement.addEventListener('touchstart', handleTouchStart as EventListener);
+    editorElement.addEventListener('touchend', handleTouchEnd as EventListener);
+    editorElement.addEventListener('touchmove', handleTouchMove as EventListener);
     
     return () => {
-      document.removeEventListener('selectionchange', onSelectionChange);
-      document.removeEventListener('mouseup', handleDocumentMouseUp);
-      document.removeEventListener('dragend', handleDocumentDragEnd);
-      
-      // Clean up any pending timers using the stored refs
-      if (currentSelectionCheckTimer) {
-        clearTimeout(currentSelectionCheckTimer);
-      }
-      if (currentSelectionEndTimeout) {
-        clearTimeout(currentSelectionEndTimeout);
-      }
-      if (currentPopupTimeout) {
-        clearTimeout(currentPopupTimeout);
-      }
+      editorElement.removeEventListener('touchstart', handleTouchStart as EventListener);
+      editorElement.removeEventListener('touchend', handleTouchEnd as EventListener);
+      editorElement.removeEventListener('touchmove', handleTouchMove as EventListener);
     };
-  }, [handleSelectionChange, handleMouseUp, handleDragEnd]);
-  
-  // Add a keyboard shortcut handler for Ctrl+Shift+P to force show popup
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'p' && editor) {
-        e.preventDefault();
-        console.log('Keyboard shortcut Ctrl+Shift+P detected');
-        
-        const range = getSelectionRange(editor);
-        if (range) {
-          setSelectionRange(range);
-          onShowPopup(true);
-        }
-      }
-    };
-    
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [editor, onShowPopup]);
+  }, [handleTouchStart, handleTouchEnd, handleTouchMove]);
   
   return {
     selectionRange,
@@ -285,6 +223,9 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
     handleMouseUp,
     handleDragStart,
     handleDragEnd,
-    handleSelectionChange
+    handleSelectionChange,
+    handleTouchStart,
+    handleTouchEnd,
+    handleTouchMove
   };
 }; 
