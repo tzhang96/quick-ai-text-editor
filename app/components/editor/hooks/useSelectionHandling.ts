@@ -87,7 +87,7 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
   }, [editor]);
   
   // Handle touch end
-  const handleTouchEnd = useCallback((_e: Event) => {
+  const handleTouchEnd = useCallback(() => {
     if (!editor) return;
     
     const now = Date.now();
