@@ -19,14 +19,18 @@ import TokenUsageDisplay from '../../../components/TokenUsageDisplay';
 import { DEFAULT_MODEL, GeminiModel, AIAction } from '../../../services/geminiService';
 
 const EditorContainer: React.FC = () => {
-  // Initialize editor
-  const { editor, isEditorReady, getContent, setContent } = useEditorInitialization({});
-  
   // State for UI elements
   const [showPopup, setShowPopup] = useState(false);
   const [selectionCoords, setSelectionCoords] = useState<{ x: number; y: number } | null>(null);
   const [selectedText, setSelectedText] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<GeminiModel>('gemini-2.0-flash');
+  const [isMonospaceFont, setIsMonospaceFont] = useState(false);
+  
+  // Initialize editor
+  const { editor, isEditorReady, getContent, setContent } = useEditorInitialization({
+    isMonospaceFont
+  });
   
   // Use custom hooks
   const { actionHistory, addActionToHistory, clearActionHistory } = useActionHistory();
@@ -37,7 +41,7 @@ const EditorContainer: React.FC = () => {
     }
   });
   const { showExportMenu, toggleExportMenu, closeExportMenu, exportAsHTML, exportAsMarkdown, exportAsText } = useExportMenu({ editor });
-  const { selectedModel, showModelSelector, closeModelSelector, handleModelSelect: originalHandleModelSelect } = useModelSelection(DEFAULT_MODEL);
+  const { showModelSelector, closeModelSelector, handleModelSelect: originalHandleModelSelect } = useModelSelection(DEFAULT_MODEL);
   
   // Handle AI action performed
   const handleActionPerformed = useCallback((action: AIAction, instructions: string, modelName: GeminiModel) => {
@@ -55,45 +59,42 @@ const EditorContainer: React.FC = () => {
     addActionToHistory(action, instructions, modelName);
   }, [addActionToHistory, ignoreNextChange]);
   
-  // Custom handleModelSelect with notification
+  // Handle model selection
   const handleModelSelect = useCallback((model: GeminiModel) => {
-    // First call the original handler
     originalHandleModelSelect(model);
+    setSelectedModel(model);
     
-    // Show notification for model change
-    const modelName = model.replace('gemini-2.0-', '').toUpperCase();
-    
-    // Create a temporary notification in the UI
+    // Show notification
     const notification = document.createElement('div');
-    notification.className = 'fixed bottom-4 right-4 bg-indigo-600 text-white px-4 py-2 rounded-md shadow-lg z-50 transition-opacity duration-500';
-    notification.style.opacity = '0.9';
-    notification.innerHTML = `<div class="flex items-center gap-2">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-      </svg>
-      <span>Switched to <strong>${modelName}</strong> model</span>
-    </div>`;
-    
+    notification.className = 'fixed bottom-4 right-4 bg-indigo-600 text-white px-4 py-2 rounded-md shadow-lg transition-opacity duration-300';
+    notification.textContent = `Switched to ${model}`;
     document.body.appendChild(notification);
     
-    // Fade out and remove after 3 seconds
+    // Remove notification after delay
     setTimeout(() => {
       notification.style.opacity = '0';
       setTimeout(() => {
         document.body.removeChild(notification);
-      }, 500);
-    }, 3000);
+      }, 300);
+    }, 2000);
   }, [originalHandleModelSelect]);
   
-  // Toggle export menu (closes model selector if open)
+  // Toggle export menu
   const handleToggleExportMenu = useCallback(() => {
+    toggleExportMenu();
+    
+    // Close model selector if open
     if (showModelSelector) {
       closeModelSelector();
     }
-    toggleExportMenu();
-  }, [showModelSelector, closeModelSelector, toggleExportMenu]);
+  }, [toggleExportMenu, showModelSelector, closeModelSelector]);
   
-  // Handle selection
+  // Toggle monospace font
+  const handleToggleMonospace = useCallback(() => {
+    setIsMonospaceFont(prev => !prev);
+  }, []);
+  
+  // Handle showing popup
   const handleShowPopup = useCallback((shouldShow: boolean) => {
     setShowPopup(shouldShow);
     
@@ -292,6 +293,11 @@ const EditorContainer: React.FC = () => {
               ignoreNextChange();
             }
             break;
+          case '`':
+            e.preventDefault();
+            // Toggle monospace font
+            handleToggleMonospace();
+            break;
         }
       }
       
@@ -323,7 +329,7 @@ const EditorContainer: React.FC = () => {
     return () => {
       document.removeEventListener('keydown', handleKeyboardShortcut);
     };
-  }, [editor, isEditorReady, handleToggleExportMenu, selectedModel, handleModelSelect, getContent, setContent, clearActionHistory, ignoreNextChange]);
+  }, [editor, isEditorReady, handleToggleExportMenu, selectedModel, handleModelSelect, getContent, setContent, clearActionHistory, ignoreNextChange, handleToggleMonospace]);
   
   return (
     <div className="flex flex-col h-full">
@@ -334,28 +340,17 @@ const EditorContainer: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <button
-              onClick={handleToggleExportMenu}
-              className="px-3 py-1 bg-white border border-gray-200 text-gray-700 rounded-md hover:bg-gray-50 flex items-center text-sm shadow-sm"
-              data-export-button
-            >
-              <span>Export</span>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            
-            {showExportMenu && (
-              <ExportMenu
-                isOpen={showExportMenu}
-                onExportHTML={exportAsHTML}
-                onExportMarkdown={exportAsMarkdown}
-                onExportText={exportAsText}
-                onClose={closeExportMenu}
-              />
-            )}
-          </div>
+          <button
+            onClick={handleToggleMonospace}
+            className={`px-3 py-1 border text-sm rounded-md shadow-sm flex items-center ${
+              isMonospaceFont 
+                ? 'bg-indigo-100 text-indigo-800 border-indigo-200 font-medium' 
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+            }`}
+            title="Toggle Monospace Font (Ctrl+`)"
+          >
+            <span className="font-mono">Monospace</span>
+          </button>
           
           <div className="flex rounded-md shadow-sm overflow-hidden border border-gray-200">
             <button
@@ -401,6 +396,29 @@ const EditorContainer: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
           </button>
+          
+          <div className="relative">
+            <button
+              onClick={handleToggleExportMenu}
+              className="px-3 py-1 bg-white border border-gray-200 text-gray-700 rounded-md hover:bg-gray-50 flex items-center text-sm shadow-sm"
+              data-export-button
+            >
+              <span>Export</span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {showExportMenu && (
+              <ExportMenu
+                isOpen={showExportMenu}
+                onExportHTML={exportAsHTML}
+                onExportMarkdown={exportAsMarkdown}
+                onExportText={exportAsText}
+                onClose={closeExportMenu}
+              />
+            )}
+          </div>
         </div>
       </div>
       
@@ -410,7 +428,7 @@ const EditorContainer: React.FC = () => {
       
       <div className="flex-grow">
         <div 
-          className="editor-container min-h-[400px] max-h-[70vh] overflow-y-auto"
+          className={`editor-container min-h-[400px] max-h-[70vh] overflow-y-auto ${isMonospaceFont ? 'font-mono' : ''}`}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onDragStart={handleDragStart}
@@ -426,9 +444,14 @@ const EditorContainer: React.FC = () => {
           <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs font-medium">
             {selectedModel}
           </span>
+          {isMonospaceFont && (
+            <span className="ml-2 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs font-medium font-mono">
+              Monospace
+            </span>
+          )}
         </div>
         <div>
-          Select text to see AI options • <span className="text-gray-600 font-medium">Ctrl+Shift+P</span> to force popup
+          Select text to see AI options • <span className="text-gray-600 font-medium">Ctrl+Shift+P</span> to force popup • <span className="text-gray-600 font-medium">Ctrl+`</span> for monospace
         </div>
       </div>
       

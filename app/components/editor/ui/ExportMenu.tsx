@@ -24,7 +24,7 @@ const ExportMenu: React.FC<ExportMenuProps> = ({
   };
   
   return (
-    <div className="absolute left-0 top-full mt-1 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50" data-export-menu>
+    <div className="absolute right-0 top-full mt-1 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50" data-export-menu>
       <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="export-button">
         <button
           className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"

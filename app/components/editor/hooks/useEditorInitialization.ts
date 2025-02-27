@@ -2,18 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { Editor, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import Underline from '@tiptap/extension-underline';
 import PersistentHighlight from '../extensions/PersistentHighlight';
 
 interface UseEditorInitializationProps {
   initialContent?: string;
   onUpdate?: (editor: Editor) => void;
   placeholder?: string;
+  isMonospaceFont?: boolean;
 }
 
 export const useEditorInitialization = ({
   initialContent = '',
   onUpdate,
-  placeholder = 'Start typing or paste text here...'
+  placeholder = 'Start typing or paste text here...',
+  isMonospaceFont = false
 }: UseEditorInitializationProps) => {
   const [isEditorReady, setIsEditorReady] = useState(false);
   
@@ -35,6 +38,8 @@ export const useEditorInitialization = ({
         code: {},
         history: {},
       }),
+      // Add Underline extension
+      Underline,
       Placeholder.configure({
         placeholder,
       }),
@@ -49,7 +54,7 @@ export const useEditorInitialization = ({
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm focus:outline-none min-h-[300px] max-w-none',
+        class: `prose prose-sm focus:outline-none min-h-[300px] max-w-none ${isMonospaceFont ? 'font-mono' : ''}`,
       },
       // Handle paste to strip unwanted formatting
       handlePaste: (view, event) => {
