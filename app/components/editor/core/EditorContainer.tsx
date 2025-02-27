@@ -15,6 +15,7 @@ import ExportMenu from '../ui/ExportMenu';
 import TextSelectionPopup from '../../../components/TextSelectionPopup';
 import EditHistoryViewer from '../../../components/EditHistoryViewer';
 import EditorMenuBar from '../../../components/EditorMenuBar';
+import TokenUsageDisplay from '../../../components/TokenUsageDisplay';
 import { DEFAULT_MODEL, GeminiModel, AIAction } from '../../../services/geminiService';
 
 const EditorContainer: React.FC = () => {
@@ -327,7 +328,10 @@ const EditorContainer: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       <div className="flex justify-between items-center px-4 py-2 border-b bg-gradient-to-r from-indigo-50 to-blue-50">
-        <h2 className="text-xl font-semibold text-gray-800">Quick AI Text Editor</h2>
+        <div className="flex items-center">
+          <h2 className="text-xl font-semibold text-gray-800">Quick AI Text Editor</h2>
+          {editor && <TokenUsageDisplay editor={editor} className="ml-4" />}
+        </div>
         
         <div className="flex items-center gap-2">
           <div className="relative">

@@ -1,6 +1,6 @@
 # AI-Enhanced Text Editor
 
-A powerful rich text editor with AI capabilities powered by Google Gemini. This application allows you to write and format text, and then use AI to transform selected text in various ways, such as expanding, summarizing, rephrasing, or revising.
+A super cool rich text editor with AI capabilities powered by Google Gemini. This application allows you to write and format text, and then use AI to transform selected text in various ways, such as expanding, summarizing, rephrasing, or revising.
 
 ## Features
 
@@ -41,6 +41,7 @@ A powerful rich text editor with AI capabilities powered by Google Gemini. This 
    ```
    NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY=your_api_key_here
    NEXT_PUBLIC_GOOGLE_GEMINI_MODEL=gemini-2.0-flash
+   NEXT_PUBLIC_TOKEN_LIMIT=10000
    ```
 
 4. Start the development server:
@@ -74,6 +75,13 @@ A powerful rich text editor with AI capabilities powered by Google Gemini. This 
    - Click the "History" button at the top of the editor
    - Filter history entries using the search box
    - View original and modified text for each transformation
+
+5. **Token Limit Management**:
+   - The application has a configurable token limit to control API usage
+   - Default limit is 10,000 tokens (approximately 40,000 characters)
+   - You can adjust this limit by changing the `NEXT_PUBLIC_TOKEN_LIMIT` in your `.env.local` file
+   - If your document exceeds the token limit, you'll see a warning message when trying to use AI features
+   - The limit applies to the entire document, not just the selected text
 
 ## Development
 

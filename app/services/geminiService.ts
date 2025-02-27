@@ -14,6 +14,20 @@ export type GeminiModel =
 // Default model to use
 export const DEFAULT_MODEL: GeminiModel = 'gemini-2.0-flash';
 
+// Default token limit (can be overridden by environment variable)
+export const DEFAULT_TOKEN_LIMIT = 10000;
+
+// Get the token limit from environment variable or use default
+export const getTokenLimit = (): number => {
+  const envLimit = process.env.NEXT_PUBLIC_TOKEN_LIMIT;
+  return envLimit ? parseInt(envLimit, 10) : DEFAULT_TOKEN_LIMIT;
+};
+
+// Estimate token count (rough approximation: ~4 chars per token for English text)
+export const estimateTokenCount = (text: string): number => {
+  return Math.ceil(text.length / 4);
+};
+
 interface AITransformationRequest {
   text: string;
   action: AIAction;
@@ -80,6 +94,21 @@ export const transformText = async (
   modelName: GeminiModel = DEFAULT_MODEL
 ): Promise<string> => {
   try {
+    // Check token limits before proceeding
+    const tokenLimit = getTokenLimit();
+    const { text: selectedText, fullDocument } = request;
+    
+    // Estimate tokens for selected text and full document
+    const selectedTextTokens = estimateTokenCount(selectedText);
+    const fullDocumentTokens = fullDocument ? estimateTokenCount(fullDocument) : 0;
+    
+    console.log(`Estimated tokens - Selected: ${selectedTextTokens}, Full document: ${fullDocumentTokens}, Limit: ${tokenLimit}`);
+    
+    // Check if we exceed the token limit
+    if (fullDocumentTokens > tokenLimit) {
+      throw new Error(`Document exceeds the token limit (${fullDocumentTokens} > ${tokenLimit}). Please reduce the document size.`);
+    }
+    
     const genAI = initializeGemini();
     // Use the provided model or fall back to the default
     const model = genAI.getGenerativeModel({ 
@@ -92,18 +121,18 @@ export const transformText = async (
     
     const result = await model.generateContent(prompt);
     const response = result.response;
-    let text = response.text();
+    let responseText = response.text();
     
     // Remove intro phrases but preserve internal quotes
-    text = text.replace(/^Here is the .+?:\s*/i, '');
+    responseText = responseText.replace(/^Here is the .+?:\s*/i, '');
     
     // Remove triple backticks if present
-    text = text.replace(/```[\s\S]*?```/g, match => match.replace(/```/g, '').trim());
+    responseText = responseText.replace(/```[\s\S]*?```/g, match => match.replace(/```/g, '').trim());
     
     // Remove any leading or trailing whitespace including newlines
-    text = text.trim();
+    responseText = responseText.trim();
     
-    return text;
+    return responseText;
   } catch (error) {
     console.error('Error in Gemini API call:', error);
     throw new Error(error instanceof Error ? error.message : 'Unknown error in Gemini API call');

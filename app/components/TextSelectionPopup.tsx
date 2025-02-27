@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Editor } from '@tiptap/react';
-import { transformText, logEditHistory, AIAction, GeminiModel, DEFAULT_MODEL } from '../services/geminiService';
+import { transformText, logEditHistory, AIAction, GeminiModel, DEFAULT_MODEL, estimateTokenCount, getTokenLimit } from '../services/geminiService';
 
 // Type for action history item
 interface ActionHistoryItem {
@@ -36,6 +36,8 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
   const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isOverTokenLimit, setIsOverTokenLimit] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
 
   // Log props for debugging in production
@@ -49,6 +51,42 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       isVisible
     });
   }, [text, position, editor, modelName, isVisible]);
+
+  // Check if document exceeds token limit on mount and when visible
+  useEffect(() => {
+    if (!editor || !isVisible) return;
+    
+    const checkTokenLimit = () => {
+      const documentContent = editor.getHTML();
+      const estimatedTokens = estimateTokenCount(documentContent);
+      const tokenLimit = getTokenLimit();
+      
+      const isOverLimit = estimatedTokens > tokenLimit;
+      setIsOverTokenLimit(isOverLimit);
+      
+      // Set error message if over limit
+      if (isOverLimit) {
+        const percentage = Math.round((estimatedTokens / tokenLimit) * 100);
+        setErrorMessage(
+          `Text length exceeds token limit: ${estimatedTokens.toLocaleString()} / ${tokenLimit.toLocaleString()} (${percentage}%)
+          Please reduce your text length.`
+        );
+      } else {
+        // Clear error message if we're back under the limit
+        if (errorMessage && errorMessage.includes('token limit')) {
+          setErrorMessage(null);
+        }
+      }
+    };
+    
+    // Check immediately when popup becomes visible
+    checkTokenLimit();
+    
+    // Also set up an interval to check periodically while popup is open
+    const intervalId = setInterval(checkTokenLimit, 2000);
+    
+    return () => clearInterval(intervalId);
+  }, [editor, isVisible, errorMessage]);
 
   // Position the popup and ensure it's within viewport
   useEffect(() => {
@@ -87,6 +125,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
 
   const handleAIAction = async (action: AIAction) => {
     setIsLoading(true);
+    setErrorMessage(null); // Clear any previous errors
     
     try {
       // Get the full document content for better context
@@ -149,20 +188,37 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
         }
       } else {
         console.error('Transformation failed: Empty result');
-        alert('Error: Failed to transform text');
+        setErrorMessage('Error: Failed to transform text');
       }
     } catch (error) {
       console.error('Error during text transformation:', error);
-      alert('Failed to process text. Please try again.');
+      
+      // Check if it's a token limit error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('token limit')) {
+        // Display a more user-friendly message for token limit errors
+        const tokenLimit = getTokenLimit();
+        const documentContent = editor.getHTML();
+        const estimatedTokens = estimateTokenCount(documentContent);
+        
+        setErrorMessage(`Document length exceeds the token limit (${estimatedTokens} > ${tokenLimit}). 
+          Please reduce your document size or increase the limit in environment variables.`);
+      } else {
+        setErrorMessage('Failed to process text. Please try again.');
+      }
     } finally {
       setIsLoading(false);
-      setShowHistory(false);
-      // Close popup after action completes
-      setTimeout(() => {
-        if (onActionPerformed) {
-          onActionPerformed('' as AIAction, '', modelName); // Signal to close popup
-        }
-      }, 500);
+      
+      // Only close popup if no error occurred
+      if (!errorMessage) {
+        setShowHistory(false);
+        // Close popup after action completes
+        setTimeout(() => {
+          if (onActionPerformed) {
+            onActionPerformed('' as AIAction, '', modelName); // Signal to close popup
+          }
+        }, 500);
+      }
     }
   };
   
@@ -250,6 +306,14 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     }
   };
 
+  // Get button class with disabled state if over token limit
+  const getButtonClass = (baseClass: string): string => {
+    if (isOverTokenLimit) {
+      return `${baseClass.split(' ')[0]} bg-opacity-50 cursor-not-allowed text-white px-2.5 py-1.5 rounded-md text-sm font-medium shadow-sm`;
+    }
+    return baseClass;
+  };
+
   if (!isVisible) return null;
   
   return (
@@ -272,44 +336,50 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
         style={{ pointerEvents: 'auto' }} // Re-enable pointer events for the content
       >
         <div className="p-3 space-y-3">
+          {errorMessage && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-xs mb-2">
+              {errorMessage}
+            </div>
+          )}
+          
           <div className="flex flex-wrap gap-1.5">
             <button
               onClick={(e) => {
                 handlePopupEvent(e);
-                handleAIAction('expand');
+                if (!isOverTokenLimit) handleAIAction('expand');
               }}
-              className="bg-indigo-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-600 shadow-sm transition-colors"
-              disabled={isLoading}
+              className={getButtonClass("bg-indigo-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-indigo-600 shadow-sm transition-colors")}
+              disabled={isLoading || isOverTokenLimit}
             >
               Expand
             </button>
             <button
               onClick={(e) => {
                 handlePopupEvent(e);
-                handleAIAction('summarize');
+                if (!isOverTokenLimit) handleAIAction('summarize');
               }}
-              className="bg-green-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-green-600 shadow-sm transition-colors"
-              disabled={isLoading}
+              className={getButtonClass("bg-green-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-green-600 shadow-sm transition-colors")}
+              disabled={isLoading || isOverTokenLimit}
             >
               Summarize
             </button>
             <button
               onClick={(e) => {
                 handlePopupEvent(e);
-                handleAIAction('rephrase');
+                if (!isOverTokenLimit) handleAIAction('rephrase');
               }}
-              className="bg-yellow-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-yellow-600 shadow-sm transition-colors"
-              disabled={isLoading}
+              className={getButtonClass("bg-yellow-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-yellow-600 shadow-sm transition-colors")}
+              disabled={isLoading || isOverTokenLimit}
             >
               Rephrase
             </button>
             <button
               onClick={(e) => {
                 handlePopupEvent(e);
-                handleAIAction('revise');
+                if (!isOverTokenLimit) handleAIAction('revise');
               }}
-              className="bg-purple-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-purple-600 shadow-sm transition-colors"
-              disabled={isLoading}
+              className={getButtonClass("bg-purple-500 text-white px-2.5 py-1.5 rounded-md text-sm font-medium hover:bg-purple-600 shadow-sm transition-colors")}
+              disabled={isLoading || isOverTokenLimit}
             >
               Revise
             </button>
@@ -371,7 +441,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
               console.log('Input field mousedown intercepted');
             }}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-            disabled={isLoading}
+            disabled={isLoading || isOverTokenLimit}
           />
         </div>
       </div>

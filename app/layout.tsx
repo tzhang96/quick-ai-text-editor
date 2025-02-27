@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "AI Text Editor",
-  description: "A powerful text editor with AI capabilities powered by Google Gemini",
+  description: "A super cool text editor with AI capabilities powered by Google Gemini",
   icons: {
     icon: '/favicon.svg',
   },
