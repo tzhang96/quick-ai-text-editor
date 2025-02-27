@@ -206,12 +206,45 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
     editorElement.addEventListener('touchend', handleTouchEnd as EventListener);
     editorElement.addEventListener('touchmove', handleTouchMove as EventListener);
     
+    // Add selection change listener
+    const onSelectionChange = () => {
+      // Skip if we're in the middle of selecting or dragging
+      if (isSelecting.current || isDragging.current) {
+        return;
+      }
+      
+      // Minimal delay between mouse up and selection check
+      const timeSinceMouseUp = Date.now() - lastMouseUpTime.current;
+      if (timeSinceMouseUp < 20) { // Minimal delay
+        return;
+      }
+      
+      handleSelectionChange();
+    };
+    
+    // Add document-level mouse up handler
+    const onDocumentMouseUp = () => {
+      if (isSelecting.current) {
+        lastMouseUpTime.current = Date.now();
+        isSelecting.current = false;
+        // Add a small delay to let the selection finalize
+        setTimeout(() => {
+          checkSelectionForPopup();
+        }, 20);
+      }
+    };
+    
+    document.addEventListener('selectionchange', onSelectionChange);
+    document.addEventListener('mouseup', onDocumentMouseUp);
+    
     return () => {
       editorElement.removeEventListener('touchstart', handleTouchStart as EventListener);
       editorElement.removeEventListener('touchend', handleTouchEnd as EventListener);
       editorElement.removeEventListener('touchmove', handleTouchMove as EventListener);
+      document.removeEventListener('selectionchange', onSelectionChange);
+      document.removeEventListener('mouseup', onDocumentMouseUp);
     };
-  }, [handleTouchStart, handleTouchEnd, handleTouchMove]);
+  }, [handleTouchStart, handleTouchEnd, handleTouchMove, handleSelectionChange, isSelecting, isDragging, lastMouseUpTime, checkSelectionForPopup]);
   
   return {
     selectionRange,
