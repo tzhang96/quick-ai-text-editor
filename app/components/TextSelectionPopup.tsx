@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Editor } from '@tiptap/react';
-import { transformText, logEditHistory, AIAction, GeminiModel, DEFAULT_MODEL, estimateTokenCount, getTokenLimit } from '../services/geminiService';
+import { transformText, logEditHistory, AIAction, GeminiModel, DEFAULT_MODEL, countWords, getWordLimit } from '../services/geminiService';
 
 // Type for action history item
 interface ActionHistoryItem {
@@ -52,38 +52,38 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     });
   }, [text, position, editor, modelName, isVisible]);
 
-  // Check if document exceeds token limit on mount and when visible
+  // Check if document exceeds word limit on mount and when visible
   useEffect(() => {
     if (!editor || !isVisible) return;
     
-    const checkTokenLimit = () => {
+    const checkWordLimit = () => {
       const documentContent = editor.getHTML();
-      const estimatedTokens = estimateTokenCount(documentContent);
-      const tokenLimit = getTokenLimit();
+      const documentWords = countWords(documentContent);
+      const wordLimit = getWordLimit();
       
-      const isOverLimit = estimatedTokens > tokenLimit;
+      const isOverLimit = documentWords > wordLimit;
       setIsOverTokenLimit(isOverLimit);
       
       // Set error message if over limit
       if (isOverLimit) {
-        const percentage = Math.round((estimatedTokens / tokenLimit) * 100);
+        const percentage = Math.round((documentWords / wordLimit) * 100);
         setErrorMessage(
-          `Text length exceeds token limit: ${estimatedTokens.toLocaleString()} / ${tokenLimit.toLocaleString()} (${percentage}%)
+          `Text length exceeds word limit: ${documentWords.toLocaleString()} / ${wordLimit.toLocaleString()} (${percentage}%)
           Please reduce your text length.`
         );
       } else {
         // Clear error message if we're back under the limit
-        if (errorMessage && errorMessage.includes('token limit')) {
+        if (errorMessage && errorMessage.includes('word limit')) {
           setErrorMessage(null);
         }
       }
     };
     
     // Check immediately when popup becomes visible
-    checkTokenLimit();
+    checkWordLimit();
     
     // Also set up an interval to check periodically while popup is open
-    const intervalId = setInterval(checkTokenLimit, 2000);
+    const intervalId = setInterval(checkWordLimit, 2000);
     
     return () => clearInterval(intervalId);
   }, [editor, isVisible, errorMessage]);
@@ -193,15 +193,15 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     } catch (error) {
       console.error('Error during text transformation:', error);
       
-      // Check if it's a token limit error
+      // Check if it's a word limit error
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('token limit')) {
-        // Display a more user-friendly message for token limit errors
-        const tokenLimit = getTokenLimit();
+      if (errorMessage.includes('word limit')) {
+        // Display a more user-friendly message for word limit errors
+        const wordLimit = getWordLimit();
         const documentContent = editor.getHTML();
-        const estimatedTokens = estimateTokenCount(documentContent);
+        const documentWords = countWords(documentContent);
         
-        setErrorMessage(`Document length exceeds the token limit (${estimatedTokens} > ${tokenLimit}). 
+        setErrorMessage(`Document length exceeds the word limit (${documentWords} > ${wordLimit}). 
           Please reduce your document size or increase the limit in environment variables.`);
       } else {
         setErrorMessage('Failed to process text. Please try again.');

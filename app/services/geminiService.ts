@@ -14,18 +14,35 @@ export type GeminiModel =
 // Default model to use
 export const DEFAULT_MODEL: GeminiModel = 'gemini-2.0-flash';
 
-// Default token limit (can be overridden by environment variable)
-export const DEFAULT_TOKEN_LIMIT = 10000;
+// Default word limit (can be overridden by environment variable)
+export const DEFAULT_WORD_LIMIT = 2500;
 
-// Get the token limit from environment variable or use default
-export const getTokenLimit = (): number => {
-  const envLimit = process.env.NEXT_PUBLIC_TOKEN_LIMIT;
-  return envLimit ? parseInt(envLimit, 10) : DEFAULT_TOKEN_LIMIT;
+// Get the word limit from environment variable or use default
+export const getWordLimit = (): number => {
+  const envLimit = process.env.NEXT_PUBLIC_WORD_LIMIT;
+  return envLimit ? parseInt(envLimit, 10) : DEFAULT_WORD_LIMIT;
 };
 
-// Estimate token count (rough approximation: ~4 chars per token for English text)
+// For backward compatibility - returns word limit
+export const getTokenLimit = (): number => {
+  return getWordLimit();
+};
+
+// Count words in text (more user-friendly than tokens)
+export const countWords = (text: string): number => {
+  // Remove HTML tags if present
+  const textWithoutHtml = text.replace(/<[^>]*>/g, ' ');
+  
+  // Count words by splitting on whitespace
+  const words = textWithoutHtml.trim().split(/\s+/);
+  
+  // Filter out empty strings that might result from multiple spaces
+  return words.filter(word => word.length > 0).length;
+};
+
+// For backward compatibility
 export const estimateTokenCount = (text: string): number => {
-  return Math.ceil(text.length / 4);
+  return countWords(text);
 };
 
 interface AITransformationRequest {
@@ -94,19 +111,19 @@ export const transformText = async (
   modelName: GeminiModel = DEFAULT_MODEL
 ): Promise<string> => {
   try {
-    // Check token limits before proceeding
-    const tokenLimit = getTokenLimit();
+    // Check word limits before proceeding
+    const wordLimit = getWordLimit();
     const { text: selectedText, fullDocument } = request;
     
-    // Estimate tokens for selected text and full document
-    const selectedTextTokens = estimateTokenCount(selectedText);
-    const fullDocumentTokens = fullDocument ? estimateTokenCount(fullDocument) : 0;
+    // Count words for selected text and full document
+    const selectedTextWords = countWords(selectedText);
+    const fullDocumentWords = fullDocument ? countWords(fullDocument) : 0;
     
-    console.log(`Estimated tokens - Selected: ${selectedTextTokens}, Full document: ${fullDocumentTokens}, Limit: ${tokenLimit}`);
+    console.log(`Estimated words - Selected: ${selectedTextWords}, Full document: ${fullDocumentWords}, Limit: ${wordLimit}`);
     
-    // Check if we exceed the token limit
-    if (fullDocumentTokens > tokenLimit) {
-      throw new Error(`Document exceeds the token limit (${fullDocumentTokens} > ${tokenLimit}). Please reduce the document size.`);
+    // Check if we exceed the word limit
+    if (fullDocumentWords > wordLimit) {
+      throw new Error(`Document exceeds the word limit (${fullDocumentWords} > ${wordLimit}). Please reduce the document size.`);
     }
     
     const genAI = initializeGemini();

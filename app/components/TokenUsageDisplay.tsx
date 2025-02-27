@@ -2,55 +2,55 @@
 
 import React, { useEffect, useState } from 'react';
 import { Editor } from '@tiptap/react';
-import { estimateTokenCount, getTokenLimit } from '../services/geminiService';
+import { countWords, getWordLimit } from '../services/geminiService';
 
-interface TokenUsageDisplayProps {
+interface WordUsageDisplayProps {
   editor: Editor | null;
   className?: string;
 }
 
-const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = ({ 
+const TokenUsageDisplay: React.FC<WordUsageDisplayProps> = ({ 
   editor, 
   className = '' 
 }) => {
-  const [tokenCount, setTokenCount] = useState(0);
-  const [tokenLimit, setTokenLimit] = useState(getTokenLimit());
+  const [wordCount, setWordCount] = useState(0);
+  const [wordLimit, setWordLimit] = useState(getWordLimit());
   const [isNearLimit, setIsNearLimit] = useState(false);
   const [isOverLimit, setIsOverLimit] = useState(false);
   
-  // Refresh token limit from environment
+  // Refresh word limit from environment
   useEffect(() => {
-    // Check for token limit changes every 5 seconds
+    // Check for word limit changes every 5 seconds
     const intervalId = setInterval(() => {
-      const currentLimit = getTokenLimit();
-      if (currentLimit !== tokenLimit) {
-        setTokenLimit(currentLimit);
+      const currentLimit = getWordLimit();
+      if (currentLimit !== wordLimit) {
+        setWordLimit(currentLimit);
       }
     }, 5000);
     
     return () => clearInterval(intervalId);
-  }, [tokenLimit]);
+  }, [wordLimit]);
   
-  // Update token count when editor content changes
+  // Update word count when editor content changes
   useEffect(() => {
     if (!editor) return;
     
-    const updateTokenCount = () => {
+    const updateWordCount = () => {
       const content = editor.getHTML();
-      const count = estimateTokenCount(content);
-      setTokenCount(count);
+      const count = countWords(content);
+      setWordCount(count);
       
       // Check if we're approaching the limit (80% or more)
-      setIsNearLimit(count >= tokenLimit * 0.8 && count < tokenLimit);
-      setIsOverLimit(count >= tokenLimit);
+      setIsNearLimit(count >= wordLimit * 0.8 && count < wordLimit);
+      setIsOverLimit(count >= wordLimit);
     };
     
     // Initial count
-    updateTokenCount();
+    updateWordCount();
     
     // Subscribe to editor updates
     const handleUpdate = () => {
-      updateTokenCount();
+      updateWordCount();
     };
     
     editor.on('update', handleUpdate);
@@ -58,9 +58,9 @@ const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = ({
     return () => {
       editor.off('update', handleUpdate);
     };
-  }, [editor, tokenLimit]);
+  }, [editor, wordLimit]);
   
-  // Get the appropriate color based on token usage
+  // Get the appropriate color based on word usage
   const getStatusColor = () => {
     if (isOverLimit) return 'text-red-600';
     if (isNearLimit) return 'text-amber-600';
@@ -74,12 +74,12 @@ const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = ({
     return 'bg-blue-500';
   };
   
-  // Only show the token count when approaching or exceeding the limit
+  // Only show the word count when approaching or exceeding the limit
   if (!isNearLimit && !isOverLimit) {
     return null;
   }
   
-  const percentage = Math.min(Math.round((tokenCount / tokenLimit) * 100), 100);
+  const percentage = Math.min(Math.round((wordCount / wordLimit) * 100), 100);
   
   return (
     <div className={`flex flex-col ${className}`}>
@@ -103,9 +103,9 @@ const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = ({
         </svg>
         <span>
           {isOverLimit ? (
-            <strong>{tokenCount.toLocaleString()} / {tokenLimit.toLocaleString()} tokens ({percentage}%)</strong>
+            <strong>{wordCount.toLocaleString()} / {wordLimit.toLocaleString()} words ({percentage}%)</strong>
           ) : (
-            <span>{tokenCount.toLocaleString()} / {tokenLimit.toLocaleString()} tokens ({percentage}%)</span>
+            <span>{wordCount.toLocaleString()} / {wordLimit.toLocaleString()} words ({percentage}%)</span>
           )}
         </span>
       </div>
