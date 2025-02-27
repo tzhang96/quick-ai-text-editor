@@ -15,8 +15,6 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
   const lastTouchEnd = useRef(0);
   const lastMouseUpTime = useRef(0);
   const selectionCheckTimer = useRef<NodeJS.Timeout | null>(null);
-  const selectionEndTimeout = useRef<NodeJS.Timeout | null>(null);
-  const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   
   // Create a function to check if selection should show popup
@@ -89,7 +87,7 @@ export const useSelectionHandling = ({ editor, onShowPopup }: UseSelectionHandli
   }, [editor]);
   
   // Handle touch end
-  const handleTouchEnd = useCallback((e: Event) => {
+  const handleTouchEnd = useCallback((_e: Event) => {
     if (!editor) return;
     
     const now = Date.now();
