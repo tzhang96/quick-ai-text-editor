@@ -26,6 +26,7 @@ const EditorContainer: React.FC = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<GeminiModel>('gemini-2.0-flash');
   const [isMonospaceFont, setIsMonospaceFont] = useState(false);
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
   
   // Initialize editor
   const { editor, isEditorReady, getContent, setContent } = useEditorInitialization({
@@ -51,12 +52,29 @@ const EditorContainer: React.FC = () => {
       return;
     }
     
+    // Handle special markers
+    if (instructions === 'STARTING') {
+      // Set AI processing flag when action starts
+      setIsAiProcessing(true);
+      return;
+    } else if (instructions === 'COMPLETED') {
+      // Clear AI processing flag when action completes
+      setTimeout(() => {
+        setIsAiProcessing(false);
+      }, 500); // Small delay to ensure UI updates properly
+      return;
+    }
+    
+    // Normal action handling for regular instructions
     // Set flag to ignore the next change detection in the editor
     // This prevents the AI-generated change from being logged as a manual edit
     ignoreNextChange();
     
     // Add to action history
     addActionToHistory(action, instructions, modelName);
+    
+    // Keep the popup visible - don't close it after action
+    // This allows the user to perform another action on the same text
   }, [addActionToHistory, ignoreNextChange]);
   
   // Handle model selection
@@ -96,6 +114,12 @@ const EditorContainer: React.FC = () => {
   
   // Handle showing popup
   const handleShowPopup = useCallback((shouldShow: boolean) => {
+    // If AI is processing and we're trying to hide the popup, ignore it
+    if (!shouldShow && isAiProcessing) {
+      console.log('Ignoring popup hide request during AI processing');
+      return;
+    }
+    
     setShowPopup(shouldShow);
     
     if (shouldShow && editor) {
@@ -121,7 +145,7 @@ const EditorContainer: React.FC = () => {
       // Don't automatically clear highlights when hiding popup
       // This allows highlights to persist until explicitly cleared
     }
-  }, [editor]);
+  }, [editor, isAiProcessing]);
   
   // Use selection handling hook
   const { 
@@ -175,6 +199,11 @@ const EditorContainer: React.FC = () => {
             (!exportMenu || !exportMenu.contains(event.target as Node))) {
           closeExportMenu();
         }
+      }
+      
+      // Don't hide popup during AI processing
+      if (isAiProcessing) {
+        return;
       }
       
       // Hide popup when clicking outside editor and popup
@@ -234,7 +263,7 @@ const EditorContainer: React.FC = () => {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showExportMenu, showPopup, closeExportMenu]);
+  }, [showExportMenu, showPopup, closeExportMenu, isAiProcessing]);
   
   // Handle keyboard shortcuts
   useEffect(() => {

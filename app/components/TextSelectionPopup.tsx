@@ -38,7 +38,13 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isOverTokenLimit, setIsOverTokenLimit] = useState(false);
+  const [localText, setLocalText] = useState(text);
   const popupRef = useRef<HTMLDivElement>(null);
+
+  // Update local text when the text prop changes
+  useEffect(() => {
+    setLocalText(text);
+  }, [text]);
 
   // Log props for debugging in production
   useEffect(() => {
@@ -127,6 +133,12 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     setIsLoading(true);
     setErrorMessage(null); // Clear any previous errors
     
+    // Signal to parent that action is starting
+    if (onActionPerformed) {
+      // Special marker to indicate action is starting
+      onActionPerformed(action, 'STARTING', modelName);
+    }
+    
     try {
       // Get the full document content for better context
       const documentContent = editor.getHTML();
@@ -142,7 +154,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       
       // Transform the text using the Gemini API
       const result = await transformText({
-        text,
+        text: localText,
         action,
         additionalInstructions: additionalInstructions || undefined,
         fullDocument: documentContent
@@ -161,15 +173,25 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
         // Set selection to the entire transformed text
         editor.commands.setTextSelection({ from: newFrom, to: newTo });
         
-        // Clear the persistent highlight after transformation
+        // Re-highlight the transformed text instead of clearing highlights
+        // This ensures the text stays highlighted for future actions
         const extension = editor.extensionManager.extensions.find(
           ext => ext.name === 'persistentHighlight'
         );
         
         if (extension) {
-          // Clear highlights
+          // Clear existing highlights first
           extension.storage.highlights = [];
-            editor.view.dispatch(editor.state.tr); // Force redraw
+          
+          // Add new highlight for the transformed text
+          extension.storage.highlights.push({
+            from: newFrom,
+            to: newTo,
+            class: 'highlight-yellow'
+          });
+          
+          // Force redraw
+          editor.view.dispatch(editor.state.tr);
         }
         
         // Explicitly log the edit to history with all details
@@ -186,6 +208,11 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
           console.log('Adding to action history in UI:', action, additionalInstructions, modelName);
           onActionPerformed(action, additionalInstructions || '', modelName);
         }
+        
+        // After successful action, update the text state to match the new selection
+        // This will keep the popup relevant to the new transformed text
+        const newSelectedText = editor.state.doc.textBetween(newFrom, newTo, ' ');
+        setLocalText(newSelectedText);
       } else {
         console.error('Transformation failed: Empty result');
         setErrorMessage('Error: Failed to transform text');
@@ -209,15 +236,16 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     } finally {
       setIsLoading(false);
       
-      // Only close popup if no error occurred
-      if (!errorMessage) {
+      // Clear additional instructions after action
+      setAdditionalInstructions('');
+      
+      // Don't close the popup so it's ready for a new action
       setShowHistory(false);
-      // Close popup after action completes
-      setTimeout(() => {
-        if (onActionPerformed) {
-          onActionPerformed('' as AIAction, '', modelName); // Signal to close popup
-        }
-      }, 500);
+      
+      // Signal to parent that action is complete, if it wasn't already done
+      if (onActionPerformed) {
+        // Special marker to indicate action is complete
+        onActionPerformed(action, 'COMPLETED', modelName);
       }
     }
   };
