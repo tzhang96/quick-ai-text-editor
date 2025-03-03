@@ -272,16 +272,28 @@ const EditorContainer: React.FC = () => {
             setIsHistoryOpen(true);
             break;
           case 'c':
+            // Only handle if there's no selection (let browser handle normal copy)
+            if (!editor.state.selection.empty) {
+              // Let the browser's default copy behavior work for selections
+              return;
+            }
+            
             e.preventDefault();
             if (editor) {
-              // Copy current content
+              // Copy current content when nothing is selected
               navigator.clipboard.writeText(getContent());
             }
             break;
           case 'x':
+            // Only handle if there's no selection (let browser handle normal cut)
+            if (!editor.state.selection.empty) {
+              // Let the browser's default cut behavior work for selections
+              return;
+            }
+            
             e.preventDefault();
             if (editor) {
-              // Clear content
+              // Clear entire content when nothing is selected
               setContent('');
               clearActionHistory();
             }

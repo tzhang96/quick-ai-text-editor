@@ -93,11 +93,11 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
     const popup = popupRef.current;
     if (!popup || !isVisible) return;
 
-    // Get popup dimensions
-    const rect = popup.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    
+      // Get popup dimensions
+      const rect = popup.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
     // Get current position from the inline styles
     const currentX = position.x - (position.x > window.innerWidth / 2 ? 260 : 0);
     const currentY = position.y + 6;
@@ -169,7 +169,7 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
         if (extension) {
           // Clear highlights
           extension.storage.highlights = [];
-          editor.view.dispatch(editor.state.tr); // Force redraw
+            editor.view.dispatch(editor.state.tr); // Force redraw
         }
         
         // Explicitly log the edit to history with all details
@@ -211,13 +211,13 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
       
       // Only close popup if no error occurred
       if (!errorMessage) {
-        setShowHistory(false);
-        // Close popup after action completes
-        setTimeout(() => {
-          if (onActionPerformed) {
-            onActionPerformed('' as AIAction, '', modelName); // Signal to close popup
-          }
-        }, 500);
+      setShowHistory(false);
+      // Close popup after action completes
+      setTimeout(() => {
+        if (onActionPerformed) {
+          onActionPerformed('' as AIAction, '', modelName); // Signal to close popup
+        }
+      }, 500);
       }
     }
   };
@@ -315,11 +315,11 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
   };
 
   if (!isVisible) return null;
-  
+
   return (
-    <div 
+    <div
       className={`${className} text-selection-popup p-2 rounded-lg shadow-lg min-w-[260px] max-w-[320px]`}
-      style={{
+      style={{ 
         position: 'absolute',
         left: `${position.x - (position.x > window.innerWidth / 2 ? 260 : 0)}px`,
         top: `${position.y + 6}px`,
@@ -424,10 +424,10 @@ const TextSelectionPopup: React.FC<TextSelectionPopupProps> = ({
             </div>
           )}
           
-          <input
-            type="text"
-            placeholder="Additional instructions (optional)"
-            value={additionalInstructions}
+            <input
+              type="text"
+              placeholder="Additional instructions (optional)"
+              value={additionalInstructions}
             onChange={handleInputChange}
             onFocus={handleInputFocus}
             onClick={handleInputClick}

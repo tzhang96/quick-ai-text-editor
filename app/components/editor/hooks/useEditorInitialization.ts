@@ -56,14 +56,6 @@ export const useEditorInitialization = ({
       attributes: {
         class: `prose prose-sm focus:outline-none min-h-[300px] max-w-none ${isMonospaceFont ? 'font-mono' : ''}`,
       },
-      // Handle paste to strip unwanted formatting
-      handlePaste: (view, event) => {
-        if (event.clipboardData && event.clipboardData.getData('text/plain')) {
-          // Let built-in handlers deal with it
-          return false;
-        }
-        return false;
-      },
     },
     immediatelyRender: false, // Fix for SSR hydration issues
   });
